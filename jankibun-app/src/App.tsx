@@ -11,12 +11,35 @@ type Settlement = {
   foodFee: Record<Player, number> // 食事代（個別）
 }
 
+type Round = {
+  scores: Record<Player, ScoreState>
+
+  events?: {
+    tobashi?: {
+      by: Player
+      targets: Player[]
+    }[]
+
+    yakuman?: {
+      winner: Player
+      key: string
+      type: "tsumo" | "ron"
+      role: "parent" | "child"
+      count: number
+      discarder?: Player
+      responsibility?: Player
+      memo?: string
+    }[]
+
+  }
+}
+
 type Session = {
   id: string
   title: string
   date: string
   location?: string
-  rounds: { scores: Record<Player, ScoreState> }[]
+  rounds: Round[]
   settlement: Settlement
 }
 
@@ -34,6 +57,16 @@ type RoundResult = {
 }
 
 const STORAGE_KEY = "jangram_sessions"
+
+const YAKUMAN_TYPES = [
+  { key: "yakuman", label: "役満", count: 1, responsibility: 0, directAdjust: 0 },
+  { key: "daisangen", label: "大三元", count: 1, responsibility: 1, directAdjust: 0 },
+  { key: "daishushi", label: "大四喜", count: 1, responsibility: 1, directAdjust: 0 },
+  { key: "sukantsu", label: "四槓子", count: 1, responsibility: 1, directAdjust: 0 },
+  { key: "double", label: "ダブル役満", count: 2, responsibility: 0, directAdjust: 0 },
+  { key: "daisangen_tsuui", label: "大三元字一色", count: 2, responsibility: 1, directAdjust: 1 },
+  { key: "triple", label: "トリプル役満", count: 3, responsibility: 1, directAdjust: 0 },
+]
 
 /* ========= ルール設定 ========= */
 
@@ -160,7 +193,7 @@ function recalcRound(
 }
 
 function calcSettlement4p(
-  rounds: { scores: Record<Player, ScoreState> }[],
+  rounds: Round[],
   players: Player[],
   settlement: Settlement
 ) {
@@ -217,6 +250,24 @@ function App() {
   const [activeRoundIndex, setActiveRoundIndex] =
     useState<number | null>(null)
 
+  const [showTobashi, setShowTobashi] = useState(false)
+  const [tobashiBy, setTobashiBy] = useState<Player | "">("")
+  const [tobashiTargets, setTobashiTargets] = useState<Player[]>([])
+
+  const [showYakuman, setShowYakuman] = useState(false)
+  const [yakumanWinner, setYakumanWinner] = useState<Player | null>(null)
+  const [yakumanTypeKey, setYakumanTypeKey] = useState<string | null>(null)
+  const [yakumanType, setYakumanType] = useState<"tsumo" | "ron">("tsumo")
+  const [yakumanRole, setYakumanRole] = useState<"parent" | "child">("child")
+  const [yakumanDiscarder, setYakumanDiscarder] = useState<Player | "">("")
+  const [yakumanResponsibility, setYakumanResponsibility] = useState<Player | "">("")
+  const [yakumanMemo, setYakumanMemo] = useState("")
+
+  const selectedYakumanType = YAKUMAN_TYPES.find(
+    t => t.key === yakumanTypeKey
+  )
+  const needResponsibility = selectedYakumanType?.responsibility === 1
+
   const [hasLoaded, setHasLoaded] = useState(false)
 
   // Sessionタイトル編集用
@@ -228,6 +279,48 @@ function App() {
     useState<Record<Player, ScoreState>>(emptyScores)
 
   const firstInputRef = useRef<HTMLInputElement | null>(null)
+
+  function loadRoundToUI(round: Round) {
+    // 点数
+    setInputScores(round.scores)
+
+    const events = round.events
+
+    // ===== 飛ばし祝儀 =====
+    if (events?.tobashi && events.tobashi.length > 0) {
+      const tobashi = events.tobashi[0]
+      setShowTobashi(true)
+      setTobashiBy(tobashi.by)
+      setTobashiTargets(tobashi.targets)
+    } else {
+      setShowTobashi(false)
+      setTobashiBy("")
+      setTobashiTargets([])
+    }
+
+    // ===== 役満祝儀 =====
+    if (events?.yakuman && events.yakuman.length > 0) {
+      const y = events.yakuman[0]
+
+      setShowYakuman(true)
+      setYakumanWinner(y.winner)
+      setYakumanTypeKey(y.key)
+      setYakumanType(y.type)
+      setYakumanRole(y.role)
+      setYakumanDiscarder(y.discarder ?? "")
+      setYakumanResponsibility(y.responsibility ?? "")
+      setYakumanMemo(y.memo ?? "")
+    } else {
+      setShowYakuman(false)
+      setYakumanWinner(null)
+      setYakumanTypeKey(null)
+      setYakumanType("tsumo")
+      setYakumanRole("child")
+      setYakumanDiscarder("")
+      setYakumanResponsibility("")
+      setYakumanMemo("")
+    }
+  }
 
   // ✅ 起動時復元
   useEffect(() => {
@@ -283,6 +376,21 @@ function App() {
           setMode("idle")
           setActiveRoundIndex(null)
           setInputScores(emptyScores)
+
+          // ★ 祝儀 state を完全リセット（ここが重要）
+          setShowTobashi(false)
+          setTobashiBy("")
+          setTobashiTargets([])
+
+          setShowYakuman(false)
+          setYakumanWinner(null)
+          setYakumanTypeKey(null)
+          setYakumanType("tsumo")
+          setYakumanRole("child")
+          setYakumanDiscarder("")
+          setYakumanResponsibility("")
+          setYakumanMemo("")
+
         }}
       >
         新しい対局を作成
@@ -527,7 +635,7 @@ function App() {
                             onClick={() => {
                               setMode("edit")
                               setActiveRoundIndex(index)
-                              setInputScores(round.scores)
+                              loadRoundToUI(round)
                             }}
                             style={{ marginRight: "4px" }}
                           >
@@ -538,7 +646,7 @@ function App() {
                             onClick={() => {
                               setMode("delete")
                               setActiveRoundIndex(index)
-                              setInputScores(round.scores)
+                              loadRoundToUI(round)
                             }}
                           >
                             削除
@@ -675,6 +783,21 @@ function App() {
                           setMode("idle")
                           setActiveRoundIndex(null)
                           setInputScores(emptyScores)
+
+                          // ★ 祝儀UIの状態もリセット
+                          setShowTobashi(false)
+                          setShowYakuman(false)
+
+                          setTobashiBy("")
+                          setTobashiTargets([])
+
+                          setYakumanWinner(null)
+                          setYakumanTypeKey(null)
+                          setYakumanType("tsumo")
+                          setYakumanRole("child")
+                          setYakumanDiscarder("")
+                          setYakumanResponsibility("")
+                          setYakumanMemo("")
                         }}
                         style={{ marginRight: "6px" }}
                       >
@@ -687,14 +810,48 @@ function App() {
                       onClick={() => {
                         // ===== 新規追加 =====
                         if (mode === "idle") {
+                          const events: Round["events"] = {}
+
+                          if (tobashiBy && tobashiTargets.length > 0) {
+                            events.tobashi = [{
+                              by: tobashiBy,
+                              targets: tobashiTargets,
+                            }]
+                          }
+                          if (yakumanWinner && yakumanTypeKey) {
+                            const selected = YAKUMAN_TYPES.find(t => t.key === yakumanTypeKey)
+
+                            if (selected) {
+                              events.yakuman = [{
+                                winner: yakumanWinner,
+                                key: yakumanTypeKey,              // （すでに追加済みならそのまま）
+                                count: selected.count,
+                                type: yakumanType,
+                                role: yakumanRole,
+                                discarder: yakumanType === "ron" && yakumanDiscarder
+                                  ? yakumanDiscarder
+                                  : undefined,
+                                responsibility: needResponsibility && yakumanResponsibility
+                                  ? yakumanResponsibility
+                                  : undefined,
+                                memo: yakumanMemo || undefined,   // ★ここを追加
+                              }]
+                            }
+                          }
+
                           const normalized = normalizeScores(inputScores)
 
                           setCurrentSession(prev => {
                             if (!prev) return prev
 
+                            const round: Round =
+                              events.tobashi || events.yakuman
+                                ? { scores: normalized, events }
+                                : { scores: normalized }
+
                             const updated = {
                               ...prev,
-                              rounds: [...prev.rounds, { scores: normalized }],
+                              rounds: [...prev.rounds, round],
                             }
 
                             // ✅ sessions 側も必ず更新
@@ -706,20 +863,74 @@ function App() {
                           })
 
                           setInputScores(emptyScores)
+
+                          setShowTobashi(false)
+                          setShowYakuman(false)
+
+                          setTobashiBy("")
+                          setTobashiTargets([])
+
+                          setYakumanWinner(null)
+                          setYakumanTypeKey(null)
+                          setYakumanType("tsumo")
+                          setYakumanRole("child")
+                          setYakumanDiscarder("")
+                          setYakumanResponsibility("")
+                          setYakumanMemo("")
+
                           return
                         }
 
                         // ===== 修正確定 =====
                         if (mode === "edit" && activeRoundIndex !== null) {
+                          const events: Round["events"] = {}
+
+                          if (tobashiBy && tobashiTargets.length > 0) {
+                            events.tobashi = [{
+                              by: tobashiBy,
+                              targets: tobashiTargets,
+                            }]
+                          }
+
+                          if (yakumanWinner && yakumanTypeKey) {
+                            const selected = YAKUMAN_TYPES.find(t => t.key === yakumanTypeKey)
+
+                            if (selected) {
+                              events.yakuman = [{
+                                winner: yakumanWinner,
+                                key: yakumanTypeKey,
+                                count: selected.count,
+                                type: yakumanType,
+                                role: yakumanRole,
+                                discarder:
+                                  yakumanType === "ron" && yakumanDiscarder
+                                    ? yakumanDiscarder
+                                    : undefined,
+                                responsibility:
+                                  needResponsibility && yakumanResponsibility
+                                    ? yakumanResponsibility
+                                    : undefined,
+                                memo: yakumanMemo || undefined,
+                              }]
+                            }
+                          }
+
                           const normalized = normalizeScores(inputScores)
 
                           setCurrentSession(prev => {
                             if (!prev || activeRoundIndex === null) return prev
 
+                            const round: Round =
+                              events.tobashi || events.yakuman
+                                ? { scores: normalized, events }
+                                : { scores: normalized }
+
                             const updated = {
                               ...prev,
                               rounds: prev.rounds.map((r, i) =>
-                                i === activeRoundIndex ? { scores: normalized } : r
+                                i === activeRoundIndex
+                                  ? round
+                                  : r
                               ),
                             }
 
@@ -733,6 +944,20 @@ function App() {
                           setMode("idle")
                           setActiveRoundIndex(null)
                           setInputScores(emptyScores)
+
+                          setShowTobashi(false)
+                          setShowYakuman(false)
+
+                          setTobashiBy("")
+                          setTobashiTargets([])
+
+                          setYakumanWinner(null)
+                          setYakumanTypeKey(null)
+                          setYakumanType("tsumo")
+                          setYakumanRole("child")
+                          setYakumanDiscarder("")
+                          setYakumanResponsibility("")
+                          setYakumanMemo("")
                           return
                         }
 
@@ -768,6 +993,207 @@ function App() {
               </tr>
             </tbody>
           </table>
+
+          {/* === 飛ばし祝儀トグル === */}
+          <div
+            style={{ cursor: "pointer", marginTop: "12px" }}
+            onClick={() => setShowTobashi(prev => !prev)}
+          >
+            {showTobashi ? "− 飛ばし祝儀を入力する" : "+ 飛ばし祝儀を入力する"}
+          </div>
+
+          {showTobashi && (
+            <div style={{ marginLeft: "16px", marginTop: "8px" }}>
+              {/* 飛ばした人 */}
+              <div style={{ marginBottom: "8px" }}>
+                飛ばした人：
+                <select
+                  value={tobashiBy}
+                  onChange={e => setTobashiBy(e.target.value as Player)}
+                  style={{ marginLeft: "8px" }}
+                >
+                  <option value="">選択</option>
+                  {players.map(p => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 飛ばされた人 */}
+              <div>
+                飛ばされた人：
+                {players.map(p => (
+                  <label key={p} style={{ marginLeft: "8px" }}>
+                    <input
+                      type="checkbox"
+                      checked={tobashiTargets.includes(p)}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setTobashiTargets(prev => [...prev, p])
+                        } else {
+                          setTobashiTargets(prev => prev.filter(x => x !== p))
+                        }
+                      }}
+                    />
+                    {p}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* === 役満祝儀トグル === */}
+          <div
+            style={{ cursor: "pointer", marginTop: "12px" }}
+            onClick={() => setShowYakuman(prev => !prev)}
+          >
+            {showYakuman ? "− 役満祝儀を入力する" : "+ 役満祝儀を入力する"}
+          </div>
+
+          {showYakuman && (
+            <div style={{ marginLeft: "16px", marginTop: "8px" }}>
+              {/* 和了者 */}
+              <div style={{ marginBottom: "8px" }}>
+                和了者：
+                <select
+                  value={yakumanWinner ?? ""}
+                  onChange={e => {
+                    const value = e.target.value as Player | ""
+
+                    if (value === "") {
+                      // 和了者を外した = 役満祝儀を使わない
+                      setYakumanWinner(null)
+                      setYakumanTypeKey(null)
+                    } else {
+                      // 和了者を選んだ = 役満祝儀が発生
+                      setYakumanWinner(value)
+                      setYakumanTypeKey("yakuman") // ★ここで初めてデフォルトを入れる
+                    }
+                  }}
+                  style={{ marginLeft: "8px" }}
+                >
+                  <option value="">選択</option>
+                  {players.map(p => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 親／子 */}
+              <div style={{ marginBottom: "8px" }}>
+                親／子：
+                <label style={{ marginLeft: "8px" }}>
+                  <input
+                    type="radio"
+                    checked={yakumanRole === "parent"}
+                    onChange={() => setYakumanRole("parent")}
+                  />
+                  親
+                </label>
+                <label style={{ marginLeft: "8px" }}>
+                  <input
+                    type="radio"
+                    checked={yakumanRole === "child"}
+                    onChange={() => setYakumanRole("child")}
+                  />
+                  子
+                </label>
+              </div>
+
+              {/* 役満回数 */}
+              <div style={{ marginBottom: "8px" }}>
+                役満種別：
+                <select
+                  value={yakumanTypeKey ?? ""}
+                  onChange={e => setYakumanTypeKey(e.target.value)}
+                  style={{ marginLeft: "8px" }}
+                >
+                  <option value="">選択</option>
+                  {YAKUMAN_TYPES.map(t => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 和了形 */}
+              <div style={{ marginBottom: "8px" }}>
+                和了形：
+                <label style={{ marginLeft: "8px" }}>
+                  <input
+                    type="radio"
+                    checked={yakumanType === "tsumo"}
+                    onChange={() => setYakumanType("tsumo")}
+                  />
+                  ツモ
+                </label>
+                <label style={{ marginLeft: "8px" }}>
+                  <input
+                    type="radio"
+                    checked={yakumanType === "ron"}
+                    onChange={() => setYakumanType("ron")}
+                  />
+                  ロン
+                </label>
+              </div>
+
+              {/* 放銃者（ロン時のみ） */}
+              {yakumanType === "ron" && (
+                <div style={{ marginBottom: "8px" }}>
+                  放銃者：
+                  <select
+                    value={yakumanDiscarder}
+                    onChange={e => setYakumanDiscarder(e.target.value as Player)}
+                    style={{ marginLeft: "8px" }}
+                  >
+                    <option value="">選択</option>
+                    {players.map(p => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* 責任払い対象 */}
+              {yakumanWinner && needResponsibility && (
+                <div style={{ marginBottom: "8px" }}>
+                  責任払い対象：
+                  <select
+                    value={yakumanResponsibility}
+                    onChange={e => setYakumanResponsibility(e.target.value as Player)}
+                    style={{ marginLeft: "8px" }}
+                  >
+                    <option value="">なし</option>
+                    {players.map(p => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {/* メモ欄 */}
+              {yakumanWinner && (
+                <div style={{ marginBottom: "8px" }}>
+                  メモ：
+                  <input
+                    type="text"
+                    value={yakumanMemo}
+                    onChange={e => setYakumanMemo(e.target.value)}
+                    maxLength={20}
+                    style={{ marginLeft: "8px", width: "260px" }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <hr
             style={{
