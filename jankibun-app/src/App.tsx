@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 
 type Player = "A" | "B" | "C" | "D"
 
+type Mode = "idle" | "edit" | "delete"
 
 type Settlement = {
   rateYenPerPt: number        // 1ptあたりの円
@@ -56,8 +57,18 @@ type RoundResult = {
   point: number
 }
 
+/* ========= 定数 ========= */
+
+// 永続化
 const STORAGE_KEY = "jangram_sessions"
 
+// 設定系
+const PLAYER_COUNT = 4
+const STARTING_POINTS = 25000
+const RETURN_POINTS = 30000
+const UMA = [20, 10, -10, -20]
+
+// マスターデータ
 const YAKUMAN_TYPES = [
   { key: "yakuman", label: "役満", count: 1, responsibility: 0, directAdjust: 0 },
   { key: "daisangen", label: "大三元", count: 1, responsibility: 1, directAdjust: 0 },
@@ -69,11 +80,6 @@ const YAKUMAN_TYPES = [
 ]
 
 /* ========= ルール設定 ========= */
-
-const PLAYER_COUNT = 4
-const STARTING_POINTS = 25000
-const RETURN_POINTS = 30000
-const UMA = [20, 10, -10, -20]
 
 /* 五捨六入（1000点単位） */
 function roundScore(score: number): number {
@@ -229,8 +235,13 @@ function calcSettlement4p(
 /* ========= UI ========= */
 
 function App() {
-  const players: Player[] = ["A", "B", "C", "D"]
 
+  /* ========= セッション・データ状態 ========= */
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [currentSession, setCurrentSession] = useState<Session | null>(null)
+  const [hasLoaded, setHasLoaded] = useState(false)
+
+  /* ========= 画面操作用の状態（初期データ） ========= */
   const emptyScores: Record<Player, ScoreState> = {
     A: { value: "", updatedAt: null },
     B: { value: "", updatedAt: null },
@@ -238,17 +249,9 @@ function App() {
     D: { value: "", updatedAt: null },
   }
 
-  type Mode = "idle" | "edit" | "delete"
-
-  const [sessions, setSessions] = useState<Session[]>([])
-
-  const [currentSession, setCurrentSession] =
-    useState<Session | null>(null)
-
+  /* ========= 画面操作用の状態 ========= */
   const [mode, setMode] = useState<Mode>("idle")
-
-  const [activeRoundIndex, setActiveRoundIndex] =
-    useState<number | null>(null)
+  const [activeRoundIndex, setActiveRoundIndex] = useState<number | null>(null)
 
   const [showTobashi, setShowTobashi] = useState(false)
   const [tobashiBy, setTobashiBy] = useState<Player | "">("")
@@ -263,13 +266,7 @@ function App() {
   const [yakumanResponsibility, setYakumanResponsibility] = useState<Player | "">("")
   const [yakumanMemo, setYakumanMemo] = useState("")
 
-  const selectedYakumanType = YAKUMAN_TYPES.find(
-    t => t.key === yakumanTypeKey
-  )
-  const needResponsibility = selectedYakumanType?.responsibility === 1
-
-  const [hasLoaded, setHasLoaded] = useState(false)
-
+  /* ========= 画面操作用の状態（補助） ========= */
   // Sessionタイトル編集用
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState("")
@@ -280,6 +277,42 @@ function App() {
 
   const firstInputRef = useRef<HTMLInputElement | null>(null)
 
+  /* ========= 派生データ ========= */
+  const rounds = currentSession?.rounds ?? []
+
+  const selectedYakumanType = YAKUMAN_TYPES.find(
+    t => t.key === yakumanTypeKey
+  )
+
+  const needResponsibility = selectedYakumanType?.responsibility === 1
+
+  /* ========= 自動処理（useEffect） ========= */
+  // ✅ 起動時復元
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      try {
+        const parsed: Session[] = JSON.parse(stored)
+        setSessions(parsed)
+      } catch (e) {
+        console.error("localStorage の読み込みに失敗", e)
+      }
+    }
+    setHasLoaded(true) // ✅ 復元完了フラグ
+  }, [])
+
+  // ✅ 自動保存
+  useEffect(() => {
+    if (!hasLoaded) return // ✅ 初回は保存しない
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
+  }, [sessions, hasLoaded])
+
+  /* ========= 初期ロード制御 ========= */
+  if (!hasLoaded) {
+    return <div style={{ padding: "16px" }}>Loading...</div>
+  }
+
+  /* ========= 処理関数 ========= */
   function loadRoundToUI(round: Round) {
     // 点数
     setInputScores(round.scores)
@@ -322,27 +355,8 @@ function App() {
     }
   }
 
-  // ✅ 起動時復元
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      try {
-        const parsed: Session[] = JSON.parse(stored)
-        setSessions(parsed)
-      } catch (e) {
-        console.error("localStorage の読み込みに失敗", e)
-      }
-    }
-    setHasLoaded(true) // ✅ 復元完了フラグ
-  }, [])
-
-  // ✅ 自動保存
-  useEffect(() => {
-    if (!hasLoaded) return // ✅ 初回は保存しない
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
-  }, [sessions, hasLoaded])
-
-  const rounds = currentSession?.rounds ?? []
+  /* ========= 画面描画 ========= */
+  const players: Player[] = ["A", "B", "C", "D"]
 
   return (
     <div style={{ padding: "16px" }}>
