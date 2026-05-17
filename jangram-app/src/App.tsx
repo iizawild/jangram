@@ -31,6 +31,7 @@ type Round = {
       discarder?: Player
       responsibility?: Player
       memo?: string
+      directPoints?: Record<Player, number>
     }[]
 
   }
@@ -114,6 +115,14 @@ function calcBonusPoints(rounds: Round[]): Record<Player, number> {
     if (round.events?.yakuman) {
       round.events.yakuman.forEach(y => {
         const total = 60 * y.count
+
+        // ===== directAdjust（＝祝儀ポイント直接入力） =====
+        if (y.directPoints !== undefined) {
+          (["A", "B", "C", "D"] as Player[]).forEach(p => {
+            result[p] += Number(y.directPoints?.[p] ?? 0)
+          })
+          return
+        }
 
         // ===== 責任払い =====
         if (y.responsibility) {
@@ -382,6 +391,14 @@ function App() {
   const [yakumanResponsibility, setYakumanResponsibility] = useState<Player | "">("")
   const [yakumanMemo, setYakumanMemo] = useState("")
 
+  const [yakumanAdjustMap, setYakumanAdjustMap] = useState<Record<Player, number | "">>({
+    A: "",
+    B: "",
+    C: "",
+    D: "",
+  })
+
+
   /* ========= 画面操作用の状態（補助） ========= */
   // Sessionタイトル編集用
   const [editingTitle, setEditingTitle] = useState(false)
@@ -444,6 +461,33 @@ function App() {
     setYakumanDiscarder("")
     setYakumanResponsibility("")
     setYakumanMemo("")
+    setYakumanAdjustMap({
+      A: "",
+      B: "",
+      C: "",
+      D: ""
+    })
+  }
+
+  function validateDirectPoints(map: Record<Player, number | "">): string | null {
+    const values = (["A", "B", "C", "D"] as Player[]).map(p =>
+      Number(map[p] || 0)
+    )
+
+    const sum = values.reduce((a, b) => a + b, 0)
+
+    // 合計0チェック
+    if (sum !== 0) {
+      return "祝儀ポイントの合計は0にしてください"
+    }
+
+    // プラス人数チェック
+    const positiveCount = values.filter(v => v > 0).length
+    if (positiveCount !== 1) {
+      return "プラスは1人だけにしてください"
+    }
+
+    return null
   }
 
   function loadRoundToUI(round: Round) {
@@ -477,15 +521,38 @@ function App() {
       setYakumanDiscarder(y.discarder ?? "")
       setYakumanResponsibility(y.responsibility ?? "")
       setYakumanMemo(y.memo ?? "")
+
+      if (y.directPoints !== undefined) {
+        setYakumanAdjustMap({
+          A: y.directPoints.A ?? "",
+          B: y.directPoints.B ?? "",
+          C: y.directPoints.C ?? "",
+          D: y.directPoints.D ?? "",
+        })
+      } else {
+        setYakumanAdjustMap({
+          A: "",
+          B: "",
+          C: "",
+          D: "",
+        })
+      }
     } else {
       setShowYakuman(false)
       setYakumanWinner(null)
+      setYakumanDealer("")
       setYakumanTypeKey(null)
       setYakumanType("tsumo")
       setYakumanRole("child")
       setYakumanDiscarder("")
       setYakumanResponsibility("")
       setYakumanMemo("")
+      setYakumanAdjustMap({
+        A: "",
+        B: "",
+        C: "",
+        D: "",
+      })
     }
   }
 
@@ -939,6 +1006,15 @@ function App() {
                       onClick={() => {
                         // ===== 新規追加 =====
                         if (mode === "idle") {
+
+                          if (yakumanWinner && selectedYakumanType?.directAdjust === 1) {
+                            const error = validateDirectPoints(yakumanAdjustMap)
+                            if (error) {
+                              alert(error)
+                              return
+                            }
+                          }
+
                           const events: Round["events"] = {}
 
                           if (tobashiBy && tobashiTargets.length > 0) {
@@ -964,7 +1040,16 @@ function App() {
                                 responsibility: needResponsibility && yakumanResponsibility
                                   ? yakumanResponsibility
                                   : undefined,
-                                memo: yakumanMemo || undefined,   // ★ここを追加
+                                memo: yakumanMemo || undefined,
+                                directPoints:
+                                  selected?.directAdjust === 1
+                                    ? {
+                                      A: Number(yakumanAdjustMap.A || 0),
+                                      B: Number(yakumanAdjustMap.B || 0),
+                                      C: Number(yakumanAdjustMap.C || 0),
+                                      D: Number(yakumanAdjustMap.D || 0),
+                                    }
+                                    : undefined,
                               }]
                             }
                           }
@@ -991,7 +1076,7 @@ function App() {
 
                             return updated
                           })
-                          
+
                           setInputScores(emptyScores)
 
                           // ★ 祝儀UIの状態もリセット
@@ -1002,6 +1087,15 @@ function App() {
 
                         // ===== 修正確定 =====
                         if (mode === "edit" && activeRoundIndex !== null) {
+
+                          if (yakumanWinner && selectedYakumanType?.directAdjust === 1) {
+                            const error = validateDirectPoints(yakumanAdjustMap)
+                            if (error) {
+                              alert(error)
+                              return
+                            }
+                          }
+
                           const events: Round["events"] = {}
 
                           if (tobashiBy && tobashiTargets.length > 0) {
@@ -1031,6 +1125,15 @@ function App() {
                                     ? yakumanResponsibility
                                     : undefined,
                                 memo: yakumanMemo || undefined,
+                                directPoints:
+                                  selected?.directAdjust === 1
+                                    ? {
+                                      A: Number(yakumanAdjustMap.A || 0),
+                                      B: Number(yakumanAdjustMap.B || 0),
+                                      C: Number(yakumanAdjustMap.C || 0),
+                                      D: Number(yakumanAdjustMap.D || 0),
+                                    }
+                                    : undefined,
                               }]
                             }
                           }
@@ -1060,7 +1163,7 @@ function App() {
 
                             return updated
                           })
-                          
+
                           setMode("idle")
                           setActiveRoundIndex(null)
                           setInputScores(emptyScores)
@@ -1316,6 +1419,7 @@ function App() {
                   </select>
                 </div>
               )}
+
               {/* メモ欄 */}
               {yakumanWinner && (
                 <div style={{ marginBottom: "8px" }}>
@@ -1327,6 +1431,29 @@ function App() {
                     maxLength={20}
                     style={{ marginLeft: "8px", width: "260px" }}
                   />
+                </div>
+              )}
+
+              {/* 手動祝儀入力 */}
+              {selectedYakumanType?.directAdjust === 1 && (
+                <div style={{ marginBottom: "8px" }}>
+                  祝儀ポイント（直接入力）：
+                  {players.map(p => (
+                    <div key={p}>
+                      {p}：
+                      <input
+                        type="number"
+                        value={yakumanAdjustMap[p]}
+                        onChange={e =>
+                          setYakumanAdjustMap(prev => ({
+                            ...prev,
+                            [p]: e.target.value === "" ? "" : Number(e.target.value),
+                          }))
+                        }
+                        style={{ marginLeft: "8px", width: "80px" }}
+                      />
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
