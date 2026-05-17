@@ -27,6 +27,7 @@ type Round = {
       type: "tsumo" | "ron"
       role: "parent" | "child"
       count: number
+      dealer?: Player   // ← ★追加（役満時の親）
       discarder?: Player
       responsibility?: Player
       memo?: string
@@ -68,6 +69,13 @@ const STARTING_POINTS = 25000
 const RETURN_POINTS = 30000
 const UMA = [20, 10, -10, -20]
 
+const TOBASHI_POINT = 10
+
+const YAKUMAN_TSUMO_CHILD_ALL = 20   // 全員均等
+const YAKUMAN_TSUMO_CHILD_PARENT = 30 // 親負担
+const YAKUMAN_TSUMO_CHILD_CHILD = 15 // 子負担
+const USE_PARENT_EXTRA = true       // false = 全員均等, true = 親負担増
+
 // マスターデータ
 const YAKUMAN_TYPES = [
   { key: "yakuman", label: "役満", count: 1, responsibility: 0, directAdjust: 0 },
@@ -80,6 +88,109 @@ const YAKUMAN_TYPES = [
 ]
 
 /* ========= ルール設定 ========= */
+
+/* 飛ばし祝儀計算 */
+function calcBonusPoints(rounds: Round[]): Record<Player, number> {
+  const result: Record<Player, number> = {
+    A: 0,
+    B: 0,
+    C: 0,
+    D: 0,
+  }
+
+  rounds.forEach(round => {
+
+    // ===== 飛ばし祝儀 =====
+    if (round.events?.tobashi) {
+      round.events.tobashi.forEach(t => {
+        t.targets.forEach(target => {
+          result[t.by] += TOBASHI_POINT
+          result[target] -= TOBASHI_POINT
+        })
+      })
+    }
+
+    // ===== 役満祝儀 =====
+    if (round.events?.yakuman) {
+      round.events.yakuman.forEach(y => {
+        const total = 60 * y.count
+
+        // ===== 責任払い =====
+        if (y.responsibility) {
+          result[y.winner] += total
+          result[y.responsibility] -= total
+          return
+        }
+
+        if (y.type === "ron") {
+          // ===== ロン =====
+          if (y.discarder) {
+            result[y.winner] += total
+            result[y.discarder] -= total
+          }
+
+        } else if (y.type === "tsumo") {
+
+          if (y.role === "parent") {
+            // ===== 親ツモ =====
+            const others = (["A", "B", "C", "D"] as Player[])
+              .filter(p => p !== y.winner)
+
+            const share = total / 3
+
+            result[y.winner] += total
+
+            others.forEach(p => {
+              result[p] -= share
+            })
+
+          } else {
+            // ===== 子ツモ =====
+
+            const others = (["A", "B", "C", "D"] as Player[])
+              .filter(p => p !== y.winner)
+
+            // 和了者のプラス
+            result[y.winner] += total
+
+            if (!USE_PARENT_EXTRA) {
+              // ===== 全員均等 =====
+              others.forEach(p => {
+                result[p] -= YAKUMAN_TSUMO_CHILD_ALL * y.count
+              })
+
+            } else {
+              // ===== 親負担増 =====
+
+              if (!y.dealer) {
+                const share = total / 3
+                others.forEach(p => {
+                  result[p] -= share
+                })
+                return
+              }
+
+              others.forEach(p => {
+                if (p === y.dealer) {
+                  // 親
+                  result[p] -= YAKUMAN_TSUMO_CHILD_PARENT * y.count
+                } else {
+                  // 子
+                  result[p] -= YAKUMAN_TSUMO_CHILD_CHILD * y.count
+                }
+              })
+            }
+          }
+        }
+
+      })
+    }
+
+
+  })
+
+  return result
+}
 
 /* 五捨六入（1000点単位） */
 function roundScore(score: number): number {
@@ -219,14 +330,18 @@ function calcSettlement4p(
   const rate = settlement.rateYenPerPt
   const tableShare = settlement.tableFee / 4
 
+  const bonusPt = calcBonusPoints(rounds)
+
   return players.map(player => {
-    const yen = totalPt[player] * rate
+    const total = totalPt[player] + bonusPt[player]
+    const yen = total * rate
+
     const food = settlement.foodFee[player] ?? 0
     const final = yen - tableShare - food
 
     return {
       player,
-      pt: totalPt[player],
+      pt: total,
       final,
     }
   })
@@ -259,6 +374,7 @@ function App() {
 
   const [showYakuman, setShowYakuman] = useState(false)
   const [yakumanWinner, setYakumanWinner] = useState<Player | null>(null)
+  const [yakumanDealer, setYakumanDealer] = useState<Player | "">("")
   const [yakumanTypeKey, setYakumanTypeKey] = useState<string | null>(null)
   const [yakumanType, setYakumanType] = useState<"tsumo" | "ron">("tsumo")
   const [yakumanRole, setYakumanRole] = useState<"parent" | "child">("child")
@@ -313,6 +429,23 @@ function App() {
   }
 
   /* ========= 処理関数 ========= */
+  function resetYakumanState() {
+    setShowTobashi(false)
+    setShowYakuman(false)
+
+    setTobashiBy("")
+    setTobashiTargets([])
+
+    setYakumanWinner(null)
+    setYakumanDealer("")
+    setYakumanTypeKey(null)
+    setYakumanType("tsumo")
+    setYakumanRole("child")
+    setYakumanDiscarder("")
+    setYakumanResponsibility("")
+    setYakumanMemo("")
+  }
+
   function loadRoundToUI(round: Round) {
     // 点数
     setInputScores(round.scores)
@@ -337,6 +470,7 @@ function App() {
 
       setShowYakuman(true)
       setYakumanWinner(y.winner)
+      setYakumanDealer(y.dealer ?? "")
       setYakumanTypeKey(y.key)
       setYakumanType(y.type)
       setYakumanRole(y.role)
@@ -357,6 +491,7 @@ function App() {
 
   /* ========= 画面描画 ========= */
   const players: Player[] = ["A", "B", "C", "D"]
+  const bonusPt = calcBonusPoints(rounds)
 
   return (
     <div style={{ padding: "16px" }}>
@@ -372,7 +507,7 @@ function App() {
             location: "",
             rounds: [],
             settlement: {
-              rateYenPerPt: 100, // デフォルト100円/pt
+              rateYenPerPt: 50, // デフォルト50円/pt
               tableFee: 0,
               foodFee: {
                 A: 0,
@@ -391,19 +526,8 @@ function App() {
           setActiveRoundIndex(null)
           setInputScores(emptyScores)
 
-          // ★ 祝儀 state を完全リセット（ここが重要）
-          setShowTobashi(false)
-          setTobashiBy("")
-          setTobashiTargets([])
-
-          setShowYakuman(false)
-          setYakumanWinner(null)
-          setYakumanTypeKey(null)
-          setYakumanType("tsumo")
-          setYakumanRole("child")
-          setYakumanDiscarder("")
-          setYakumanResponsibility("")
-          setYakumanMemo("")
+          // ★ 祝儀UIの状態もリセット
+          resetYakumanState()
 
         }}
       >
@@ -454,6 +578,9 @@ function App() {
                 setMode("idle")
                 setActiveRoundIndex(null)
                 setInputScores(emptyScores)
+
+                // ★ 祝儀UIの状態もリセット
+                resetYakumanState()
               }}
               style={{ marginLeft: "8px", color: "#c00" }}
             >
@@ -799,19 +926,7 @@ function App() {
                           setInputScores(emptyScores)
 
                           // ★ 祝儀UIの状態もリセット
-                          setShowTobashi(false)
-                          setShowYakuman(false)
-
-                          setTobashiBy("")
-                          setTobashiTargets([])
-
-                          setYakumanWinner(null)
-                          setYakumanTypeKey(null)
-                          setYakumanType("tsumo")
-                          setYakumanRole("child")
-                          setYakumanDiscarder("")
-                          setYakumanResponsibility("")
-                          setYakumanMemo("")
+                          resetYakumanState()
                         }}
                         style={{ marginRight: "6px" }}
                       >
@@ -842,6 +957,7 @@ function App() {
                                 count: selected.count,
                                 type: yakumanType,
                                 role: yakumanRole,
+                                dealer: yakumanDealer || undefined,  // ★これ追加
                                 discarder: yakumanType === "ron" && yakumanDiscarder
                                   ? yakumanDiscarder
                                   : undefined,
@@ -875,22 +991,11 @@ function App() {
 
                             return updated
                           })
-
+                          
                           setInputScores(emptyScores)
 
-                          setShowTobashi(false)
-                          setShowYakuman(false)
-
-                          setTobashiBy("")
-                          setTobashiTargets([])
-
-                          setYakumanWinner(null)
-                          setYakumanTypeKey(null)
-                          setYakumanType("tsumo")
-                          setYakumanRole("child")
-                          setYakumanDiscarder("")
-                          setYakumanResponsibility("")
-                          setYakumanMemo("")
+                          // ★ 祝儀UIの状態もリセット
+                          resetYakumanState()
 
                           return
                         }
@@ -916,6 +1021,7 @@ function App() {
                                 count: selected.count,
                                 type: yakumanType,
                                 role: yakumanRole,
+                                dealer: yakumanDealer || undefined,  // ★これ追加
                                 discarder:
                                   yakumanType === "ron" && yakumanDiscarder
                                     ? yakumanDiscarder
@@ -954,24 +1060,14 @@ function App() {
 
                             return updated
                           })
-
+                          
                           setMode("idle")
                           setActiveRoundIndex(null)
                           setInputScores(emptyScores)
 
-                          setShowTobashi(false)
-                          setShowYakuman(false)
+                          // ★ 祝儀UIの状態もリセット
+                          resetYakumanState()
 
-                          setTobashiBy("")
-                          setTobashiTargets([])
-
-                          setYakumanWinner(null)
-                          setYakumanTypeKey(null)
-                          setYakumanType("tsumo")
-                          setYakumanRole("child")
-                          setYakumanDiscarder("")
-                          setYakumanResponsibility("")
-                          setYakumanMemo("")
                           return
                         }
 
@@ -995,6 +1091,9 @@ function App() {
                           setMode("idle")
                           setActiveRoundIndex(null)
                           setInputScores(emptyScores)
+
+                          // ★ 祝儀UIの状態もリセット
+                          resetYakumanState()
                         }
                       }}
                     >
@@ -1156,6 +1255,30 @@ function App() {
                 </label>
               </div>
 
+              {showYakuman &&
+                yakumanWinner &&
+                yakumanType === "tsumo" &&
+                yakumanRole === "child" &&
+                USE_PARENT_EXTRA && (
+                  <div style={{ marginBottom: "8px" }}>
+                    その時の親：
+                    <select
+                      value={yakumanDealer ?? ""}
+                      onChange={e =>
+                        setYakumanDealer(e.target.value as Player)
+                      }
+                      style={{ marginLeft: "8px" }}
+                    >
+                      <option value="">選択</option>
+                      {players.map(p => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
               {/* 放銃者（ロン時のみ） */}
               {yakumanType === "ron" && (
                 <div style={{ marginBottom: "8px" }}>
@@ -1314,6 +1437,28 @@ function App() {
               borderTop: "1px solid #ddd",
             }}
           />
+
+          <h3 style={{ marginTop: "20px" }}>祝儀pt</h3>
+          <table style={{ borderCollapse: "collapse", marginTop: "8px" }}>
+            <tbody>
+              <tr>
+                {players.map(player => (
+                  <td
+                    key={player}
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "6px 10px",
+                      textAlign: "center",
+                      color: bonusPt[player] < 0 ? "red" : "green",
+                    }}
+                  >
+                    {player}：{bonusPt[player]}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+
           {/* ⑥ 精算結果（一番最後） */}
           <h3 style={{ textAlign: "center", color: "#333" }}>精算結果</h3>
           <table
