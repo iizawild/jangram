@@ -810,9 +810,8 @@ function App() {
                 <th style={{
                   border: "1px solid #ccc",
                   padding: "2px",
-                  width: "50px"
+                  width: "30px"
                 }}>
-                  半荘
                 </th>
                 {players.flatMap(player => ([
                   <th
@@ -865,10 +864,11 @@ function App() {
                     <td style={{
                       border: "1px solid #ccc",
                       padding: "2px",
-                      width: "60px",
+                      width: "30px",
+                      textAlign: "center",
                       whiteSpace: "nowrap"
                     }}>
-                      半荘 {index + 1}
+                      {index + 1}
                     </td>
 
                     {players.map(player => {
