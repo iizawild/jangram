@@ -356,6 +356,41 @@ function calcSettlement4p(
   })
 }
 
+function Mark({
+  label,
+  value,
+}: {
+  label: string
+  value: number
+}) {
+  if (value === 0) return null
+
+  const color = value > 0 ? "#2e7d32" : "#c62828"
+
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        minWidth: "12px",
+        height: "12px",
+        lineHeight: "12px",
+        borderRadius: "50%",
+        border: `1px solid ${color}`,
+        color,
+        textAlign: "center",
+        fontSize: "8px",
+        marginLeft: "1px",
+        verticalAlign: "middle",
+        opacity: 0.85,
+        fontWeight: "bold",
+      }}
+    >
+      {label}
+    </span>
+
+  )
+}
+
 /* ========= UI ========= */
 
 function App() {
@@ -772,20 +807,40 @@ function App() {
           >
             <thead>
               <tr>
-                <th style={{ border: "1px solid #ccc", padding: "4px" }}>
+                <th style={{
+                  border: "1px solid #ccc",
+                  padding: "2px",
+                  width: "50px"
+                }}>
                   半荘
                 </th>
-
-                {players.map(player => (
+                {players.flatMap(player => ([
                   <th
-                    key={player}
-                    style={{ border: "1px solid #ccc", padding: "4px" }}
+                    key={`${player}-score`}
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "2px",
+                      width: "60px"
+                    }}
                   >
                     {player}
+                  </th>,
+                  <th
+                    key={`${player}-mark`}
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "2px",
+                      width: "36px"
+                    }}
+                  >
                   </th>
-                ))}
+                ]))}
 
-                <th style={{ border: "1px solid #ccc", padding: "4px" }}>
+                <th style={{
+                  border: "1px solid #ccc",
+                  padding: "2px",
+                  width: "80px"
+                }}>
                   操作
                 </th>
               </tr>
@@ -807,7 +862,12 @@ function App() {
                           : undefined,
                     }}
                   >
-                    <td style={{ border: "1px solid #ccc", padding: "4px" }}>
+                    <td style={{
+                      border: "1px solid #ccc",
+                      padding: "2px",
+                      width: "60px",
+                      whiteSpace: "nowrap"
+                    }}>
                       半荘 {index + 1}
                     </td>
 
@@ -815,42 +875,96 @@ function App() {
                       const r = results.find(r => r.player === player)
                       const point = r ? r.point : 0
 
-                      return (
+                      return [
+                        // ✅ 数字セル
                         <td
-                          key={player}
+                          key={`${player}-score`}
                           style={{
                             border: "1px solid #ccc",
-                            padding: "4px",
+                            padding: "2px",
+                            textAlign: "right",
                             color: point < 0 ? "red" : "green",
+                            width: "60px"
                           }}
                         >
                           {r ? point.toFixed(1) : ""}
+                        </td>,
+
+                        // ✅ マークセル（複数OK）
+                        <td
+                          key={`${player}-mark`}
+                          style={{
+                            border: "1px solid #ccc",
+                            padding: "2px",
+                            whiteSpace: "nowrap",
+                            width: "36px"
+                          }}
+                        >
+                          {round.events?.tobashi?.map((t, i) => {
+                            if (t.by === player)
+                              return <Mark key={`t+${index}-${i}`} label="飛" value={1} />
+                            if (t.targets.includes(player))
+                              return <Mark key={`t-${index}-${i}`} label="飛" value={-1} />
+                            return null
+                          })}
+
+                          {round.events?.yakuman?.map((y, i) => {
+                            if (y.directPoints !== undefined) {
+                              const val = y.directPoints[player] ?? 0
+                              if (val > 0)
+                                return <Mark key={`y+${index}-${i}`} label="役" value={1} />
+                              if (val < 0)
+                                return <Mark key={`y-${index}-${i}`} label="役" value={-1} />
+                              return null
+                            }
+
+                            if (y.winner === player)
+                              return <Mark key={`yw${index}-${i}`} label="役" value={1} />
+                            if (y.discarder === player || y.responsibility === player)
+                              return <Mark key={`yl${index}-${i}`} label="役" value={-1} />
+
+                            return null
+                          })}
                         </td>
-                      )
+                      ]
+
                     })}
 
                     <td
                       style={{
                         border: "1px solid #ccc",
-                        padding: "4px",
+                        padding: "2px",
                         textAlign: "center",
+                        width: "80px"
                       }}
                     >
+
                       {/* idle のときだけ 修正・削除 */}
                       {mode === "idle" && (
                         <>
+
                           <button
+                            style={{
+                              padding: "2px 4px",
+                              fontSize: "12px",
+                              marginRight: "2px"
+                            }}
                             onClick={() => {
                               setMode("edit")
                               setActiveRoundIndex(index)
                               loadRoundToUI(round)
                             }}
-                            style={{ marginRight: "4px" }}
                           >
                             修正
                           </button>
 
                           <button
+                            style={{
+                              padding: "2px 4px",
+                              fontSize: "12px",
+                              marginRight: "2px"
+                            }}
+
                             onClick={() => {
                               setMode("delete")
                               setActiveRoundIndex(index)
@@ -882,7 +996,7 @@ function App() {
                   style={{
                     border: "1px solid #ccc",
                     borderTop: "2px solid #666",
-                    padding: "4px",
+                    padding: "2px",
                     fontWeight: "bold",
                   }}
                 >
@@ -896,20 +1010,34 @@ function App() {
                     return sum + (r ? r.point : 0)
                   }, 0)
 
-                  return (
+                  return [
+                    // 数字セル
                     <td
-                      key={player}
+                      key={`${player}-score`}
                       style={{
                         border: "1px solid #ccc",
                         borderTop: "2px solid #666",
-                        padding: "4px",
+                        padding: "2px",
                         fontWeight: "bold",
+                        textAlign: "right",
                         color: totalPoint < 0 ? "red" : "green",
                       }}
                     >
                       {totalPoint.toFixed(1)}
+                    </td>,
+
+                    // 順位セル（あとで使う）
+                    <td
+                      key={`${player}-rank`}
+                      style={{
+                        border: "1px solid #ccc",
+                        borderTop: "2px solid #666",
+                        padding: "2px",
+                      }}
+                    >
                     </td>
-                  )
+                  ]
+
                 })}
 
                 <td
