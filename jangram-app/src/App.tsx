@@ -957,22 +957,6 @@ function App() {
                           >
                             修正
                           </button>
-
-                          <button
-                            style={{
-                              padding: "2px 4px",
-                              fontSize: "12px",
-                              marginRight: "2px"
-                            }}
-
-                            onClick={() => {
-                              setMode("delete")
-                              setActiveRoundIndex(index)
-                              loadRoundToUI(round)
-                            }}
-                          >
-                            削除
-                          </button>
                         </>
                       )}
 
@@ -1332,6 +1316,40 @@ function App() {
                       {mode === "edit" && "修正確定"}
                       {mode === "delete" && "削除確定"}
                     </button>
+
+                    {mode === "edit" && (
+                      <button
+                        onClick={() => {
+                          if (activeRoundIndex === null) return
+
+                          setCurrentSession(prev => {
+                            if (!prev) return prev
+
+                            const updated = {
+                              ...prev,
+                              rounds: prev.rounds.filter((_, i) => i !== activeRoundIndex),
+                            }
+
+                            setSessions(sessions =>
+                              sessions.map(s => (s.id === updated.id ? updated : s))
+                            )
+
+                            return updated
+                          })
+
+                          setMode("idle")
+                          setActiveRoundIndex(null)
+                          setInputScores(emptyScores)
+                          resetYakumanState()
+                        }}
+                        style={{
+                          marginLeft: "6px",
+                          color: "red"
+                        }}
+                      >
+                        削除確定
+                      </button>
+                    )}
                   </>
                 </td>
               </tr>
