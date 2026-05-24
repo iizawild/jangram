@@ -1513,25 +1513,21 @@ function App() {
     const events = round.events
 
     // ===== 飛ばし祝儀 =====
-    if (events?.tobashi && events.tobashi.length > 0) {
+    if (events?.tobashi?.[0]) {
       const tobashi = events.tobashi[0]
       setShowTobashi(true)
       setTobashiBy(tobashi.by)
       setTobashiTargets(tobashi.targets)
-    } else {
-      setShowTobashi(false)
-      setTobashiBy("")
-      setTobashiTargets([])
     }
 
     // ===== 役満祝儀 =====
-    if (events?.yakuman && events.yakuman.length > 0) {
+    if (events?.yakuman?.[0]) {
       const y = events.yakuman[0]
 
       setShowYakuman(true)
       setYakumanWinner(y.winner)
-      setYakumanDealer(y.dealer ?? "")
       setYakumanTypeKey(y.key)
+      setYakumanDealer(y.dealer ?? "")
       setYakumanType(y.type)
       setYakumanRole(y.role)
       setYakumanDiscarder(y.discarder ?? "")
@@ -1550,10 +1546,6 @@ function App() {
       } else {
         setYakumanAdjustMap(createEmptyAdjustMap())
       }
-
-    } else {
-      resetYakumanState()
-
     }
   }
 
