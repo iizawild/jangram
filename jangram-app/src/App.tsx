@@ -393,6 +393,769 @@ function Mark({
 
 /* ========= UI ========= */
 
+function ScoreTable({
+  rounds,
+  players,
+  mode,
+  activeRoundIndex,
+  setMode,
+  setActiveRoundIndex,
+  loadRoundToUI,
+  recalcRound
+}: any) {
+  return (
+
+    <table
+      style={{
+        borderCollapse: "collapse",
+        width: "100%",
+        marginTop: "8px",
+      }}
+    >
+      <thead>
+        <tr>
+          <th style={{
+            border: "1px solid #ccc",
+            padding: "2px",
+            width: "30px"
+          }}>
+          </th>
+          {players.flatMap(player => ([
+            <th
+              key={`${player}-score`}
+              style={{
+                border: "1px solid #ccc",
+                padding: "2px",
+                width: "60px"
+              }}
+            >
+              {player}
+            </th>,
+            <th
+              key={`${player}-mark`}
+              style={{
+                border: "1px solid #ccc",
+                padding: "2px",
+                width: "36px"
+              }}
+            >
+            </th>
+          ]))}
+
+          <th style={{
+            border: "1px solid #ccc",
+            padding: "2px",
+            width: "80px"
+          }}>
+            操作
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {rounds.map((round, index) => {
+          const results = recalcRound(round.scores)
+
+          return (
+            <tr
+              key={index}
+              style={{
+                backgroundColor:
+                  mode !== "idle" && activeRoundIndex === index
+                    ? mode === "edit"
+                      ? "#fffbe6"   // 修正中（淡い黄色）
+                      : "#ffeaea"   // 削除中（淡い赤）
+                    : undefined,
+              }}
+            >
+              <td style={{
+                border: "1px solid #ccc",
+                padding: "2px",
+                width: "30px",
+                textAlign: "center",
+                whiteSpace: "nowrap"
+              }}>
+                {index + 1}
+              </td>
+
+              {players.map(player => {
+                const r = results.find(r => r.player === player)
+                const point = r ? r.point : 0
+
+                return [
+                  // ✅ 数字セル
+                  <td
+                    key={`${player}-score`}
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "2px",
+                      textAlign: "right",
+                      color: point < 0 ? "red" : "green",
+                      width: "60px"
+                    }}
+                  >
+                    {r ? point.toFixed(1) : ""}
+                  </td>,
+
+                  // ✅ マークセル（複数OK）
+                  <td
+                    key={`${player}-mark`}
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "2px",
+                      whiteSpace: "nowrap",
+                      width: "36px"
+                    }}
+                  >
+                    {round.events?.tobashi?.map((t, i) => {
+                      if (t.by === player)
+                        return <Mark key={`t+${index}-${i}`} label="飛" value={1} />
+                      if (t.targets.includes(player))
+                        return <Mark key={`t-${index}-${i}`} label="飛" value={-1} />
+                      return null
+                    })}
+
+                    {round.events?.yakuman?.map((y, i) => {
+                      if (y.directPoints !== undefined) {
+                        const val = y.directPoints[player] ?? 0
+                        if (val > 0)
+                          return <Mark key={`y+${index}-${i}`} label="役" value={1} />
+                        if (val < 0)
+                          return <Mark key={`y-${index}-${i}`} label="役" value={-1} />
+                        return null
+                      }
+
+                      if (y.winner === player)
+                        return <Mark key={`yw${index}-${i}`} label="役" value={1} />
+                      if (y.discarder === player || y.responsibility === player)
+                        return <Mark key={`yl${index}-${i}`} label="役" value={-1} />
+
+                      return null
+                    })}
+                  </td>
+                ]
+
+              })}
+
+              <td
+                style={{
+                  border: "1px solid #ccc",
+                  padding: "2px",
+                  textAlign: "center",
+                  width: "80px"
+                }}
+              >
+
+                {/* idle のときだけ 修正・削除 */}
+                {mode === "idle" && (
+                  <>
+
+                    <button
+                      style={{
+                        padding: "2px 4px",
+                        fontSize: "12px",
+                        marginRight: "2px"
+                      }}
+                      onClick={() => {
+                        setMode("edit")
+                        setActiveRoundIndex(index)
+                        loadRoundToUI(round)
+                      }}
+                    >
+                      修正
+                    </button>
+                  </>
+                )}
+
+                {/* 修正中 */}
+                {mode === "edit" && activeRoundIndex === index && (
+                  <span style={{ color: "#b58900" }}>修正中</span>
+                )}
+
+              </td>
+            </tr>
+          )
+        })}
+
+        {/* ===== 合計行 ===== */}
+        <tr style={{ backgroundColor: "#f2f2f2" }}>
+          <td
+            style={{
+              border: "1px solid #ccc",
+              borderTop: "2px solid #666",
+              padding: "2px",
+              fontWeight: "bold",
+            }}
+          >
+            合計
+          </td>
+
+          {players.map(player => {
+            const totalPoint = rounds.reduce((sum, round) => {
+              const results = recalcRound(round.scores)
+              const r = results.find(r => r.player === player)
+              return sum + (r ? r.point : 0)
+            }, 0)
+
+            return [
+              // 数字セル
+              <td
+                key={`${player}-score`}
+                style={{
+                  border: "1px solid #ccc",
+                  borderTop: "2px solid #666",
+                  padding: "2px",
+                  fontWeight: "bold",
+                  textAlign: "right",
+                  color: totalPoint < 0 ? "red" : "green",
+                }}
+              >
+                {totalPoint.toFixed(1)}
+              </td>,
+
+              // 順位セル（あとで使う）
+              <td
+                key={`${player}-rank`}
+                style={{
+                  border: "1px solid #ccc",
+                  borderTop: "2px solid #666",
+                  padding: "2px",
+                }}
+              >
+              </td>
+            ]
+
+          })}
+
+          <td
+            style={{
+              border: "1px solid #ccc",
+              borderTop: "2px solid #666",
+            }}
+          />
+        </tr>
+      </tbody>
+    </table>
+
+  )
+}
+
+function InputSection({
+  players,
+  inputScores,
+  setInputScores,
+  firstInputRef,
+  mode,
+  setMode,
+  setActiveRoundIndex,
+  emptyScores,
+  validateYakumanInput,
+  buildEvents,
+  normalizeScores,
+  setCurrentSession,
+  setSessions,
+  resetYakumanState,
+  activeRoundIndex,
+  deleteRound
+}: any) {
+  return (
+    <table
+      style={{
+        borderCollapse: "collapse",
+        width: "100%",
+        marginTop: "8px",
+        backgroundColor: "#f9f9f9",
+      }}
+    >
+      <tbody>
+        <tr>
+          {/* 行ラベル */}
+          <td
+            style={{
+              border: "1px solid #ccc",
+              padding: "4px",
+              fontWeight: "bold",
+            }}
+          >
+            入力
+          </td>
+
+          {/* 各プレイヤー入力欄 */}
+          {players.map(player => (
+            <td
+              key={player}
+              style={{
+                border: "1px solid #ccc",
+                padding: "4px",
+              }}
+            >
+              <input
+                ref={player === players[0] ? firstInputRef : null}
+                type="number"
+                value={inputScores[player].value}
+                onChange={e => {
+                  const raw = e.target.value
+                  setInputScores(prev => ({
+                    ...prev,
+                    [player]: {
+                      value: raw === "" ? "" : Number(raw),
+                      updatedAt: raw === "" ? null : Date.now(),
+                    },
+                  }))
+                }}
+                onBlur={() => {
+                  setInputScores(prev => normalizeScores(prev))
+                }}
+                style={{ width: "80px" }}
+              />
+            </td>
+          ))}
+
+          <td
+            style={{
+              border: "1px solid #ccc",
+              padding: "4px",
+              textAlign: "center",
+            }}
+          >
+            <>
+              {/* === キャンセル（edit / delete のときだけ表示） === */}
+              {mode === "edit" && (
+                <button
+                  onClick={() => {
+                    setMode("idle")
+                    setActiveRoundIndex(null)
+                    setInputScores(emptyScores)
+
+                    // ★ 祝儀UIの状態もリセット
+                    resetYakumanState()
+                  }}
+                  style={{
+                    marginRight: "6px",
+                    padding: "2px 4px",
+                    fontSize: "12px"
+                  }}
+                >
+                  取り消し
+                </button>
+              )}
+
+              {/* === 確定 === */}
+              <button
+                onClick={() => {
+                  // ===== 新規追加 =====
+                  if (mode === "idle") {
+
+                    if (!validateYakumanInput()) return
+
+                    const events = buildEvents()
+                    const normalized = normalizeScores(inputScores)
+
+                    // ✅ イベントがあるか安全に判定
+                    const hasEvents =
+                      !!(events?.tobashi?.length || events?.yakuman?.length)
+
+                    setCurrentSession(prev => {
+                      if (!prev) return prev
+
+                      const round: Round =
+                        hasEvents
+                          ? { scores: normalized, events }
+                          : { scores: normalized }
+
+                      const updated = {
+                        ...prev,
+                        rounds: [...prev.rounds, round],
+                      }
+
+                      // ✅ sessions 側も必ず更新
+                      setSessions(sessions =>
+                        sessions.map(s => (s.id === updated.id ? updated : s))
+                      )
+
+                      return updated
+                    })
+
+                    setInputScores(emptyScores)
+
+                    // ★ 祝儀UIの状態もリセット
+                    resetYakumanState()
+
+                    return
+                  }
+
+                  // ===== 修正確定 =====
+                  if (mode === "edit" && activeRoundIndex !== null) {
+
+                    if (!validateYakumanInput()) return
+
+                    const events = buildEvents()
+                    const normalized = normalizeScores(inputScores)
+
+                    // ✅ eventsが実際にあるか安全に判定
+                    const hasEvents =
+                      !!(events?.tobashi?.length || events?.yakuman?.length)
+
+                    setCurrentSession(prev => {
+                      if (!prev || activeRoundIndex === null) return prev
+
+                      const round: Round =
+                        hasEvents
+                          ? { scores: normalized, events }
+                          : { scores: normalized }
+
+                      const updated = {
+                        ...prev,
+                        rounds: prev.rounds.map((r, i) =>
+                          i === activeRoundIndex
+                            ? round
+                            : r
+                        ),
+                      }
+
+                      setSessions(sessions =>
+                        sessions.map(s => (s.id === updated.id ? updated : s))
+                      )
+
+                      return updated
+                    })
+
+                    setMode("idle")
+                    setActiveRoundIndex(null)
+                    setInputScores(emptyScores)
+
+                    // ★ 祝儀UIの状態もリセット
+                    resetYakumanState()
+
+                    return
+                  }
+
+                }}
+
+                style={{
+                  marginRight: "6px",
+                  padding: "2px 4px",
+                  fontSize: "12px"
+                }}
+              >
+                {mode === "idle" && "確定"}
+                {mode === "edit" && "修正確定"}
+              </button>
+
+              {mode === "edit" && (
+                <button
+                  onClick={deleteRound}
+                  style={{
+                    marginRight: "6px",
+                    padding: "2px 4px",
+                    fontSize: "12px",
+                    color: "red"
+                  }}
+                >
+                  削除確定
+                </button>
+              )}
+            </>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  )
+}
+
+function BonusSection({
+  players,
+  showTobashi,
+  setShowTobashi,
+  tobashiBy,
+  setTobashiBy,
+  tobashiTargets,
+  setTobashiTargets,
+  showYakuman,
+  setShowYakuman,
+  yakumanWinner,
+  setYakumanWinner,
+  yakumanDealer,
+  setYakumanDealer,
+  yakumanTypeKey,
+  setYakumanTypeKey,
+  yakumanType,
+  setYakumanType,
+  yakumanRole,
+  setYakumanRole,
+  yakumanDiscarder,
+  setYakumanDiscarder,
+  yakumanResponsibility,
+  setYakumanResponsibility,
+  yakumanMemo,
+  setYakumanMemo,
+  yakumanAdjustMap,
+  setYakumanAdjustMap,
+  selectedYakumanType,
+  needResponsibility
+}: any) {
+  return (
+    <>
+      {/* === 飛ばし祝儀トグル === */}
+      <div
+        style={{ cursor: "pointer", marginTop: "12px" }}
+        onClick={() => setShowTobashi(prev => !prev)}
+      >
+        {showTobashi ? "− 飛ばし祝儀を入力する" : "+ 飛ばし祝儀を入力する"}
+      </div>
+
+      {showTobashi && (
+        <div style={{ marginLeft: "16px", marginTop: "8px" }}>
+          {/* 飛ばした人 */}
+          <div style={{ marginBottom: "8px" }}>
+            飛ばした人：
+            <select
+              value={tobashiBy}
+              onChange={e => setTobashiBy(e.target.value as Player)}
+              style={{ marginLeft: "8px" }}
+            >
+              <option value="">選択</option>
+              {players.map(p => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 飛ばされた人 */}
+          <div>
+            飛ばされた人：
+            {players.map(p => (
+              <label key={p} style={{ marginLeft: "8px" }}>
+                <input
+                  type="checkbox"
+                  checked={tobashiTargets.includes(p)}
+                  onChange={e => {
+                    if (e.target.checked) {
+                      setTobashiTargets(prev => [...prev, p])
+                    } else {
+                      setTobashiTargets(prev => prev.filter(x => x !== p))
+                    }
+                  }}
+                />
+                {p}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* === 役満祝儀トグル === */}
+      <div
+        style={{ cursor: "pointer", marginTop: "12px" }}
+        onClick={() => setShowYakuman(prev => !prev)}
+      >
+        {showYakuman ? "− 役満祝儀を入力する" : "+ 役満祝儀を入力する"}
+      </div>
+
+      {showYakuman && (
+        <div style={{ marginLeft: "16px", marginTop: "8px" }}>
+          {/* 和了者 */}
+          <div style={{ marginBottom: "8px" }}>
+            和了者：
+            <select
+              value={yakumanWinner ?? ""}
+              onChange={e => {
+                const value = e.target.value as Player | ""
+
+                if (value === "") {
+                  // 和了者を外した = 役満祝儀を使わない
+                  setYakumanWinner(null)
+                  setYakumanTypeKey(null)
+                } else {
+                  // 和了者を選んだ = 役満祝儀が発生
+                  setYakumanWinner(value)
+                  setYakumanTypeKey("yakuman") // ★ここで初めてデフォルトを入れる
+                }
+              }}
+              style={{ marginLeft: "8px" }}
+            >
+              <option value="">選択</option>
+              {players.map(p => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 親／子 */}
+          <div style={{ marginBottom: "8px" }}>
+            親／子：
+            <label style={{ marginLeft: "8px" }}>
+              <input
+                type="radio"
+                checked={yakumanRole === "parent"}
+                onChange={() => setYakumanRole("parent")}
+              />
+              親
+            </label>
+            <label style={{ marginLeft: "8px" }}>
+              <input
+                type="radio"
+                checked={yakumanRole === "child"}
+                onChange={() => setYakumanRole("child")}
+              />
+              子
+            </label>
+          </div>
+
+          {/* 役満回数 */}
+          <div style={{ marginBottom: "8px" }}>
+            役満種別：
+            <select
+              value={yakumanTypeKey ?? ""}
+              onChange={e => setYakumanTypeKey(e.target.value)}
+              style={{ marginLeft: "8px" }}
+            >
+              <option value="">選択</option>
+              {YAKUMAN_TYPES.map(t => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 和了形 */}
+          <div style={{ marginBottom: "8px" }}>
+            和了形：
+            <label style={{ marginLeft: "8px" }}>
+              <input
+                type="radio"
+                checked={yakumanType === "tsumo"}
+                onChange={() => setYakumanType("tsumo")}
+              />
+              ツモ
+            </label>
+            <label style={{ marginLeft: "8px" }}>
+              <input
+                type="radio"
+                checked={yakumanType === "ron"}
+                onChange={() => setYakumanType("ron")}
+              />
+              ロン
+            </label>
+          </div>
+
+          {showYakuman &&
+            yakumanWinner &&
+            yakumanType === "tsumo" &&
+            yakumanRole === "child" &&
+            USE_PARENT_EXTRA && (
+              <div style={{ marginBottom: "8px" }}>
+                その時の親：
+                <select
+                  value={yakumanDealer ?? ""}
+                  onChange={e =>
+                    setYakumanDealer(e.target.value as Player)
+                  }
+                  style={{ marginLeft: "8px" }}
+                >
+                  <option value="">選択</option>
+                  {players.map(p => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+          {/* 放銃者（ロン時のみ） */}
+          {yakumanType === "ron" && (
+            <div style={{ marginBottom: "8px" }}>
+              放銃者：
+              <select
+                value={yakumanDiscarder}
+                onChange={e => setYakumanDiscarder(e.target.value as Player)}
+                style={{ marginLeft: "8px" }}
+              >
+                <option value="">選択</option>
+                {players.map(p => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 責任払い対象 */}
+          {yakumanWinner && needResponsibility && (
+            <div style={{ marginBottom: "8px" }}>
+              責任払い対象：
+              <select
+                value={yakumanResponsibility}
+                onChange={e => setYakumanResponsibility(e.target.value as Player)}
+                style={{ marginLeft: "8px" }}
+              >
+                <option value="">なし</option>
+                {players.map(p => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* メモ欄 */}
+          {yakumanWinner && (
+            <div style={{ marginBottom: "8px" }}>
+              メモ：
+              <input
+                type="text"
+                value={yakumanMemo}
+                onChange={e => setYakumanMemo(e.target.value)}
+                maxLength={20}
+                style={{ marginLeft: "8px", width: "260px" }}
+              />
+            </div>
+          )}
+
+          {/* 手動祝儀入力 */}
+          {selectedYakumanType?.directAdjust === 1 && (
+            <div style={{ marginBottom: "8px" }}>
+              祝儀ポイント（直接入力）：
+              {players.map(p => (
+                <div key={p}>
+                  {p}：
+                  <input
+                    type="number"
+                    value={yakumanAdjustMap[p]}
+                    onChange={e =>
+                      setYakumanAdjustMap(prev => ({
+                        ...prev,
+                        [p]: e.target.value === "" ? "" : Number(e.target.value),
+                      }))
+                    }
+                    style={{ marginLeft: "8px", width: "80px" }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <hr
+        style={{
+          margin: "32px 0",
+          border: "none",
+          borderTop: "2px solid #999",
+        }}
+      />
+    </>
+  )
+}
+
 function App() {
 
   /* ========= セッション・データ状態 ========= */
@@ -882,697 +1645,70 @@ function App() {
           {/* ③ 成績表 */}
           {/* ↓↓↓ ここから今までの半荘UI ↓↓↓ */}
           <h2 style={{ marginTop: "24px" }}>成績表</h2>
-          <table
-            style={{
-              borderCollapse: "collapse",
-              width: "100%",
-              marginTop: "8px",
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={{
-                  border: "1px solid #ccc",
-                  padding: "2px",
-                  width: "30px"
-                }}>
-                </th>
-                {players.flatMap(player => ([
-                  <th
-                    key={`${player}-score`}
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "2px",
-                      width: "60px"
-                    }}
-                  >
-                    {player}
-                  </th>,
-                  <th
-                    key={`${player}-mark`}
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "2px",
-                      width: "36px"
-                    }}
-                  >
-                  </th>
-                ]))}
 
-                <th style={{
-                  border: "1px solid #ccc",
-                  padding: "2px",
-                  width: "80px"
-                }}>
-                  操作
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {rounds.map((round, index) => {
-                const results = recalcRound(round.scores)
-
-                return (
-                  <tr
-                    key={index}
-                    style={{
-                      backgroundColor:
-                        mode !== "idle" && activeRoundIndex === index
-                          ? mode === "edit"
-                            ? "#fffbe6"   // 修正中（淡い黄色）
-                            : "#ffeaea"   // 削除中（淡い赤）
-                          : undefined,
-                    }}
-                  >
-                    <td style={{
-                      border: "1px solid #ccc",
-                      padding: "2px",
-                      width: "30px",
-                      textAlign: "center",
-                      whiteSpace: "nowrap"
-                    }}>
-                      {index + 1}
-                    </td>
-
-                    {players.map(player => {
-                      const r = results.find(r => r.player === player)
-                      const point = r ? r.point : 0
-
-                      return [
-                        // ✅ 数字セル
-                        <td
-                          key={`${player}-score`}
-                          style={{
-                            border: "1px solid #ccc",
-                            padding: "2px",
-                            textAlign: "right",
-                            color: point < 0 ? "red" : "green",
-                            width: "60px"
-                          }}
-                        >
-                          {r ? point.toFixed(1) : ""}
-                        </td>,
-
-                        // ✅ マークセル（複数OK）
-                        <td
-                          key={`${player}-mark`}
-                          style={{
-                            border: "1px solid #ccc",
-                            padding: "2px",
-                            whiteSpace: "nowrap",
-                            width: "36px"
-                          }}
-                        >
-                          {round.events?.tobashi?.map((t, i) => {
-                            if (t.by === player)
-                              return <Mark key={`t+${index}-${i}`} label="飛" value={1} />
-                            if (t.targets.includes(player))
-                              return <Mark key={`t-${index}-${i}`} label="飛" value={-1} />
-                            return null
-                          })}
-
-                          {round.events?.yakuman?.map((y, i) => {
-                            if (y.directPoints !== undefined) {
-                              const val = y.directPoints[player] ?? 0
-                              if (val > 0)
-                                return <Mark key={`y+${index}-${i}`} label="役" value={1} />
-                              if (val < 0)
-                                return <Mark key={`y-${index}-${i}`} label="役" value={-1} />
-                              return null
-                            }
-
-                            if (y.winner === player)
-                              return <Mark key={`yw${index}-${i}`} label="役" value={1} />
-                            if (y.discarder === player || y.responsibility === player)
-                              return <Mark key={`yl${index}-${i}`} label="役" value={-1} />
-
-                            return null
-                          })}
-                        </td>
-                      ]
-
-                    })}
-
-                    <td
-                      style={{
-                        border: "1px solid #ccc",
-                        padding: "2px",
-                        textAlign: "center",
-                        width: "80px"
-                      }}
-                    >
-
-                      {/* idle のときだけ 修正・削除 */}
-                      {mode === "idle" && (
-                        <>
-
-                          <button
-                            style={{
-                              padding: "2px 4px",
-                              fontSize: "12px",
-                              marginRight: "2px"
-                            }}
-                            onClick={() => {
-                              setMode("edit")
-                              setActiveRoundIndex(index)
-                              loadRoundToUI(round)
-                            }}
-                          >
-                            修正
-                          </button>
-                        </>
-                      )}
-
-                      {/* 修正中 */}
-                      {mode === "edit" && activeRoundIndex === index && (
-                        <span style={{ color: "#b58900" }}>修正中</span>
-                      )}
-
-                    </td>
-                  </tr>
-                )
-              })}
-
-              {/* ===== 合計行 ===== */}
-              <tr style={{ backgroundColor: "#f2f2f2" }}>
-                <td
-                  style={{
-                    border: "1px solid #ccc",
-                    borderTop: "2px solid #666",
-                    padding: "2px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  合計
-                </td>
-
-                {players.map(player => {
-                  const totalPoint = rounds.reduce((sum, round) => {
-                    const results = recalcRound(round.scores)
-                    const r = results.find(r => r.player === player)
-                    return sum + (r ? r.point : 0)
-                  }, 0)
-
-                  return [
-                    // 数字セル
-                    <td
-                      key={`${player}-score`}
-                      style={{
-                        border: "1px solid #ccc",
-                        borderTop: "2px solid #666",
-                        padding: "2px",
-                        fontWeight: "bold",
-                        textAlign: "right",
-                        color: totalPoint < 0 ? "red" : "green",
-                      }}
-                    >
-                      {totalPoint.toFixed(1)}
-                    </td>,
-
-                    // 順位セル（あとで使う）
-                    <td
-                      key={`${player}-rank`}
-                      style={{
-                        border: "1px solid #ccc",
-                        borderTop: "2px solid #666",
-                        padding: "2px",
-                      }}
-                    >
-                    </td>
-                  ]
-
-                })}
-
-                <td
-                  style={{
-                    border: "1px solid #ccc",
-                    borderTop: "2px solid #666",
-                  }}
-                />
-              </tr>
-            </tbody>
-          </table>
+          <ScoreTable
+            rounds={rounds}
+            players={players}
+            mode={mode}
+            activeRoundIndex={activeRoundIndex}
+            setMode={setMode}
+            setActiveRoundIndex={setActiveRoundIndex}
+            loadRoundToUI={loadRoundToUI}
+            recalcRound={recalcRound}
+          />
 
           {/* ④ 入力中の半荘 */}
           <h3 style={{ color: "#333" }}>入力中の半荘</h3>
-          <table
-            style={{
-              borderCollapse: "collapse",
-              width: "100%",
-              marginTop: "8px",
-              backgroundColor: "#f9f9f9",
-            }}
-          >
-            <tbody>
-              <tr>
-                {/* 行ラベル */}
-                <td
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "4px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  入力
-                </td>
 
-                {/* 各プレイヤー入力欄 */}
-                {players.map(player => (
-                  <td
-                    key={player}
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "4px",
-                    }}
-                  >
-                    <input
-                      ref={player === players[0] ? firstInputRef : null}
-                      type="number"
-                      value={inputScores[player].value}
-                      onChange={e => {
-                        const raw = e.target.value
-                        setInputScores(prev => ({
-                          ...prev,
-                          [player]: {
-                            value: raw === "" ? "" : Number(raw),
-                            updatedAt: raw === "" ? null : Date.now(),
-                          },
-                        }))
-                      }}
-                      onBlur={() => {
-                        setInputScores(prev => normalizeScores(prev))
-                      }}
-                      style={{ width: "80px" }}
-                    />
-                  </td>
-                ))}
+          <InputSection
+            players={players}
+            inputScores={inputScores}
+            setInputScores={setInputScores}
+            firstInputRef={firstInputRef}
+            mode={mode}
+            setMode={setMode}
+            setActiveRoundIndex={setActiveRoundIndex}
+            emptyScores={emptyScores}
+            validateYakumanInput={validateYakumanInput}
+            buildEvents={buildEvents}
+            normalizeScores={normalizeScores}
+            setCurrentSession={setCurrentSession}
+            setSessions={setSessions}
+            resetYakumanState={resetYakumanState}
+            activeRoundIndex={activeRoundIndex}
+            deleteRound={deleteRound}
+          />
 
-                <td
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "4px",
-                    textAlign: "center",
-                  }}
-                >
-                  <>
-                    {/* === キャンセル（edit / delete のときだけ表示） === */}
-                    {mode === "edit" && (
-                      <button
-                        onClick={() => {
-                          setMode("idle")
-                          setActiveRoundIndex(null)
-                          setInputScores(emptyScores)
-
-                          // ★ 祝儀UIの状態もリセット
-                          resetYakumanState()
-                        }}
-                        style={{
-                          marginRight: "6px",
-                          padding: "2px 4px",
-                          fontSize: "12px"
-                        }}
-                      >
-                        取り消し
-                      </button>
-                    )}
-
-                    {/* === 確定 === */}
-                    <button
-                      onClick={() => {
-                        // ===== 新規追加 =====
-                        if (mode === "idle") {
-
-                          if (!validateYakumanInput()) return
-
-                          const events = buildEvents()
-                          const normalized = normalizeScores(inputScores)
-
-                          // ✅ イベントがあるか安全に判定
-                          const hasEvents =
-                            !!(events?.tobashi?.length || events?.yakuman?.length)
-
-                          setCurrentSession(prev => {
-                            if (!prev) return prev
-
-                            const round: Round =
-                              hasEvents
-                                ? { scores: normalized, events }
-                                : { scores: normalized }
-
-                            const updated = {
-                              ...prev,
-                              rounds: [...prev.rounds, round],
-                            }
-
-                            // ✅ sessions 側も必ず更新
-                            setSessions(sessions =>
-                              sessions.map(s => (s.id === updated.id ? updated : s))
-                            )
-
-                            return updated
-                          })
-
-                          setInputScores(emptyScores)
-
-                          // ★ 祝儀UIの状態もリセット
-                          resetYakumanState()
-
-                          return
-                        }
-
-                        // ===== 修正確定 =====
-                        if (mode === "edit" && activeRoundIndex !== null) {
-
-                          if (!validateYakumanInput()) return
-
-                          const events = buildEvents()
-                          const normalized = normalizeScores(inputScores)
-
-                          // ✅ eventsが実際にあるか安全に判定
-                          const hasEvents =
-                            !!(events?.tobashi?.length || events?.yakuman?.length)
-
-                          setCurrentSession(prev => {
-                            if (!prev || activeRoundIndex === null) return prev
-
-                            const round: Round =
-                              hasEvents
-                                ? { scores: normalized, events }
-                                : { scores: normalized }
-
-                            const updated = {
-                              ...prev,
-                              rounds: prev.rounds.map((r, i) =>
-                                i === activeRoundIndex
-                                  ? round
-                                  : r
-                              ),
-                            }
-
-                            setSessions(sessions =>
-                              sessions.map(s => (s.id === updated.id ? updated : s))
-                            )
-
-                            return updated
-                          })
-
-                          setMode("idle")
-                          setActiveRoundIndex(null)
-                          setInputScores(emptyScores)
-
-                          // ★ 祝儀UIの状態もリセット
-                          resetYakumanState()
-
-                          return
-                        }
-
-                      }}
-
-                      style={{
-                        marginRight: "6px",
-                        padding: "2px 4px",
-                        fontSize: "12px"
-                      }}
-                    >
-                      {mode === "idle" && "確定"}
-                      {mode === "edit" && "修正確定"}
-                    </button>
-
-                    {mode === "edit" && (
-                      <button
-                        onClick={deleteRound}
-                        style={{
-                          marginRight: "6px",
-                          padding: "2px 4px",
-                          fontSize: "12px",
-                          color: "red"
-                        }}
-                      >
-                        削除確定
-                      </button>
-                    )}
-                  </>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* === 飛ばし祝儀トグル === */}
-          <div
-            style={{ cursor: "pointer", marginTop: "12px" }}
-            onClick={() => setShowTobashi(prev => !prev)}
-          >
-            {showTobashi ? "− 飛ばし祝儀を入力する" : "+ 飛ばし祝儀を入力する"}
-          </div>
-
-          {showTobashi && (
-            <div style={{ marginLeft: "16px", marginTop: "8px" }}>
-              {/* 飛ばした人 */}
-              <div style={{ marginBottom: "8px" }}>
-                飛ばした人：
-                <select
-                  value={tobashiBy}
-                  onChange={e => setTobashiBy(e.target.value as Player)}
-                  style={{ marginLeft: "8px" }}
-                >
-                  <option value="">選択</option>
-                  {players.map(p => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 飛ばされた人 */}
-              <div>
-                飛ばされた人：
-                {players.map(p => (
-                  <label key={p} style={{ marginLeft: "8px" }}>
-                    <input
-                      type="checkbox"
-                      checked={tobashiTargets.includes(p)}
-                      onChange={e => {
-                        if (e.target.checked) {
-                          setTobashiTargets(prev => [...prev, p])
-                        } else {
-                          setTobashiTargets(prev => prev.filter(x => x !== p))
-                        }
-                      }}
-                    />
-                    {p}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* === 役満祝儀トグル === */}
-          <div
-            style={{ cursor: "pointer", marginTop: "12px" }}
-            onClick={() => setShowYakuman(prev => !prev)}
-          >
-            {showYakuman ? "− 役満祝儀を入力する" : "+ 役満祝儀を入力する"}
-          </div>
-
-          {showYakuman && (
-            <div style={{ marginLeft: "16px", marginTop: "8px" }}>
-              {/* 和了者 */}
-              <div style={{ marginBottom: "8px" }}>
-                和了者：
-                <select
-                  value={yakumanWinner ?? ""}
-                  onChange={e => {
-                    const value = e.target.value as Player | ""
-
-                    if (value === "") {
-                      // 和了者を外した = 役満祝儀を使わない
-                      setYakumanWinner(null)
-                      setYakumanTypeKey(null)
-                    } else {
-                      // 和了者を選んだ = 役満祝儀が発生
-                      setYakumanWinner(value)
-                      setYakumanTypeKey("yakuman") // ★ここで初めてデフォルトを入れる
-                    }
-                  }}
-                  style={{ marginLeft: "8px" }}
-                >
-                  <option value="">選択</option>
-                  {players.map(p => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 親／子 */}
-              <div style={{ marginBottom: "8px" }}>
-                親／子：
-                <label style={{ marginLeft: "8px" }}>
-                  <input
-                    type="radio"
-                    checked={yakumanRole === "parent"}
-                    onChange={() => setYakumanRole("parent")}
-                  />
-                  親
-                </label>
-                <label style={{ marginLeft: "8px" }}>
-                  <input
-                    type="radio"
-                    checked={yakumanRole === "child"}
-                    onChange={() => setYakumanRole("child")}
-                  />
-                  子
-                </label>
-              </div>
-
-              {/* 役満回数 */}
-              <div style={{ marginBottom: "8px" }}>
-                役満種別：
-                <select
-                  value={yakumanTypeKey ?? ""}
-                  onChange={e => setYakumanTypeKey(e.target.value)}
-                  style={{ marginLeft: "8px" }}
-                >
-                  <option value="">選択</option>
-                  {YAKUMAN_TYPES.map(t => (
-                    <option key={t.key} value={t.key}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 和了形 */}
-              <div style={{ marginBottom: "8px" }}>
-                和了形：
-                <label style={{ marginLeft: "8px" }}>
-                  <input
-                    type="radio"
-                    checked={yakumanType === "tsumo"}
-                    onChange={() => setYakumanType("tsumo")}
-                  />
-                  ツモ
-                </label>
-                <label style={{ marginLeft: "8px" }}>
-                  <input
-                    type="radio"
-                    checked={yakumanType === "ron"}
-                    onChange={() => setYakumanType("ron")}
-                  />
-                  ロン
-                </label>
-              </div>
-
-              {showYakuman &&
-                yakumanWinner &&
-                yakumanType === "tsumo" &&
-                yakumanRole === "child" &&
-                USE_PARENT_EXTRA && (
-                  <div style={{ marginBottom: "8px" }}>
-                    その時の親：
-                    <select
-                      value={yakumanDealer ?? ""}
-                      onChange={e =>
-                        setYakumanDealer(e.target.value as Player)
-                      }
-                      style={{ marginLeft: "8px" }}
-                    >
-                      <option value="">選択</option>
-                      {players.map(p => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-              {/* 放銃者（ロン時のみ） */}
-              {yakumanType === "ron" && (
-                <div style={{ marginBottom: "8px" }}>
-                  放銃者：
-                  <select
-                    value={yakumanDiscarder}
-                    onChange={e => setYakumanDiscarder(e.target.value as Player)}
-                    style={{ marginLeft: "8px" }}
-                  >
-                    <option value="">選択</option>
-                    {players.map(p => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* 責任払い対象 */}
-              {yakumanWinner && needResponsibility && (
-                <div style={{ marginBottom: "8px" }}>
-                  責任払い対象：
-                  <select
-                    value={yakumanResponsibility}
-                    onChange={e => setYakumanResponsibility(e.target.value as Player)}
-                    style={{ marginLeft: "8px" }}
-                  >
-                    <option value="">なし</option>
-                    {players.map(p => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* メモ欄 */}
-              {yakumanWinner && (
-                <div style={{ marginBottom: "8px" }}>
-                  メモ：
-                  <input
-                    type="text"
-                    value={yakumanMemo}
-                    onChange={e => setYakumanMemo(e.target.value)}
-                    maxLength={20}
-                    style={{ marginLeft: "8px", width: "260px" }}
-                  />
-                </div>
-              )}
-
-              {/* 手動祝儀入力 */}
-              {selectedYakumanType?.directAdjust === 1 && (
-                <div style={{ marginBottom: "8px" }}>
-                  祝儀ポイント（直接入力）：
-                  {players.map(p => (
-                    <div key={p}>
-                      {p}：
-                      <input
-                        type="number"
-                        value={yakumanAdjustMap[p]}
-                        onChange={e =>
-                          setYakumanAdjustMap(prev => ({
-                            ...prev,
-                            [p]: e.target.value === "" ? "" : Number(e.target.value),
-                          }))
-                        }
-                        style={{ marginLeft: "8px", width: "80px" }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <hr
-            style={{
-              margin: "32px 0",
-              border: "none",
-              borderTop: "2px solid #999",
-            }}
+          <BonusSection
+            players={players}
+            showTobashi={showTobashi}
+            setShowTobashi={setShowTobashi}
+            tobashiBy={tobashiBy}
+            setTobashiBy={setTobashiBy}
+            tobashiTargets={tobashiTargets}
+            setTobashiTargets={setTobashiTargets}
+            showYakuman={showYakuman}
+            setShowYakuman={setShowYakuman}
+            yakumanWinner={yakumanWinner}
+            setYakumanWinner={setYakumanWinner}
+            yakumanDealer={yakumanDealer}
+            setYakumanDealer={setYakumanDealer}
+            yakumanTypeKey={yakumanTypeKey}
+            setYakumanTypeKey={setYakumanTypeKey}
+            yakumanType={yakumanType}
+            setYakumanType={setYakumanType}
+            yakumanRole={yakumanRole}
+            setYakumanRole={setYakumanRole}
+            yakumanDiscarder={yakumanDiscarder}
+            setYakumanDiscarder={setYakumanDiscarder}
+            yakumanResponsibility={yakumanResponsibility}
+            setYakumanResponsibility={setYakumanResponsibility}
+            yakumanMemo={yakumanMemo}
+            setYakumanMemo={setYakumanMemo}
+            yakumanAdjustMap={yakumanAdjustMap}
+            setYakumanAdjustMap={setYakumanAdjustMap}
+            selectedYakumanType={selectedYakumanType}
+            needResponsibility={needResponsibility}
           />
 
           {/* ⑤ 精算条件（← 下の方へ移動） */}
