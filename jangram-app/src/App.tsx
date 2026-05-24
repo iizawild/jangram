@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 
 /* ========= 型定義 ========= */
 
 type Player = "A" | "B" | "C" | "D"
+const PLAYERS: Player[] = ["A", "B", "C", "D"]
 
 type Mode = "idle" | "edit"
 
@@ -77,8 +78,16 @@ const YAKUMAN_TSUMO_CHILD_PARENT = 30 // 親負担
 const YAKUMAN_TSUMO_CHILD_CHILD = 15 // 子負担
 const USE_PARENT_EXTRA = true       // false = 全員均等, true = 親負担増
 
+type YakumanType = {
+  key: string
+  label: string
+  count: number
+  responsibility: number
+  directAdjust: number
+}
+
 // マスターデータ
-const YAKUMAN_TYPES = [
+const YAKUMAN_TYPES: YakumanType[] = [
   { key: "yakuman", label: "役満", count: 1, responsibility: 0, directAdjust: 0 },
   { key: "daisangen", label: "大三元", count: 1, responsibility: 1, directAdjust: 0 },
   { key: "daishushi", label: "大四喜", count: 1, responsibility: 1, directAdjust: 0 },
@@ -92,12 +101,9 @@ const YAKUMAN_TYPES = [
 
 /* 飛ばし祝儀計算 */
 function calcBonusPoints(rounds: Round[]): Record<Player, number> {
-  const result: Record<Player, number> = {
-    A: 0,
-    B: 0,
-    C: 0,
-    D: 0,
-  }
+  const result = Object.fromEntries(
+    PLAYERS.map(p => [p, 0])
+  ) as Record<Player, number>
 
   rounds.forEach(round => {
 
@@ -118,14 +124,14 @@ function calcBonusPoints(rounds: Round[]): Record<Player, number> {
 
         // ===== directAdjust（＝祝儀ポイント直接入力） =====
         if (y.directPoints !== undefined) {
-          (["A", "B", "C", "D"] as Player[]).forEach(p => {
+          PLAYERS.forEach(p => {
             result[p] += Number(y.directPoints?.[p] ?? 0)
           })
           return
         }
 
         // ===== 責任払い =====
-        if (y.responsibility) {
+        if (y.responsibility !== undefined) {
           result[y.winner] += total
           result[y.responsibility] -= total
           return
@@ -142,7 +148,7 @@ function calcBonusPoints(rounds: Round[]): Record<Player, number> {
 
           if (y.role === "parent") {
             // ===== 親ツモ =====
-            const others = (["A", "B", "C", "D"] as Player[])
+            const others = PLAYERS
               .filter(p => p !== y.winner)
 
             const share = total / 3
@@ -156,7 +162,7 @@ function calcBonusPoints(rounds: Round[]): Record<Player, number> {
           } else {
             // ===== 子ツモ =====
 
-            const others = (["A", "B", "C", "D"] as Player[])
+            const others = PLAYERS
               .filter(p => p !== y.winner)
 
             // 和了者のプラス
@@ -320,15 +326,11 @@ function recalcRound(
 
 function calcSettlement4p(
   rounds: Round[],
-  players: Player[],
   settlement: Settlement
 ) {
-  const totalPt: Record<Player, number> = {
-    A: 0,
-    B: 0,
-    C: 0,
-    D: 0,
-  }
+  const totalPt = Object.fromEntries(
+    PLAYERS.map(p => [p, 0])
+  ) as Record<Player, number>
 
   rounds.forEach(round => {
     recalcRound(round.scores).forEach(r => {
@@ -341,7 +343,7 @@ function calcSettlement4p(
 
   const bonusPt = calcBonusPoints(rounds)
 
-  return players.map(player => {
+  return PLAYERS.map(player => {
     const total = totalPt[player] + bonusPt[player]
     const yen = total * rate
 
@@ -393,16 +395,33 @@ function Mark({
 
 /* ========= UI ========= */
 
+type ScoreTableProps = {
+  rounds: Round[]
+  players: Player[]
+
+  mode: Mode
+  activeRoundIndex: number | null
+
+  setMode: React.Dispatch<React.SetStateAction<Mode>>
+  setActiveRoundIndex: React.Dispatch<
+    React.SetStateAction<number | null>
+  >
+
+  loadRoundToUI: (round: Round) => void
+
+  allResults: RoundResult[][]
+}
+
 function ScoreTable({
   rounds,
+  allResults,
   players,
   mode,
   activeRoundIndex,
   setMode,
   setActiveRoundIndex,
-  loadRoundToUI,
-  recalcRound
-}: any) {
+  loadRoundToUI
+}: ScoreTableProps) {
   return (
 
     <table
@@ -454,17 +473,19 @@ function ScoreTable({
 
       <tbody>
         {rounds.map((round, index) => {
-          const results = recalcRound(round.scores)
+          const results = allResults[index] ?? []
+
+          const resultMap = Object.fromEntries(results.map(r => [r.player, r]))
 
           return (
             <tr
-              key={index}
+              key={`round-${index}`}
               style={{
                 backgroundColor:
                   mode !== "idle" && activeRoundIndex === index
                     ? mode === "edit"
-                      ? "#fffbe6"   // 修正中（淡い黄色）
-                      : "#ffeaea"   // 削除中（淡い赤）
+                      ? "#fffbe6"
+                      : "#ffeaea"
                     : undefined,
               }}
             >
@@ -479,10 +500,11 @@ function ScoreTable({
               </td>
 
               {players.map(player => {
-                const r = results.find(r => r.player === player)
+                const r = resultMap[player]
                 const point = r ? r.point : 0
 
                 return [
+
                   // ✅ 数字セル
                   <td
                     key={`${player}-score`}
@@ -509,9 +531,9 @@ function ScoreTable({
                   >
                     {round.events?.tobashi?.map((t, i) => {
                       if (t.by === player)
-                        return <Mark key={`t+${index}-${i}`} label="飛" value={1} />
+                        return <Mark key={`t-${player}-plus-${index}-${i}`} label="飛" value={1} />
                       if (t.targets.includes(player))
-                        return <Mark key={`t-${index}-${i}`} label="飛" value={-1} />
+                        return <Mark key={`t-${player}-minus-${index}-${i}`} label="飛" value={-1} />
                       return null
                     })}
 
@@ -519,16 +541,16 @@ function ScoreTable({
                       if (y.directPoints !== undefined) {
                         const val = y.directPoints[player] ?? 0
                         if (val > 0)
-                          return <Mark key={`y+${index}-${i}`} label="役" value={1} />
+                          return <Mark key={`y-${player}-plus-${index}-${i}`} label="役" value={1} />
                         if (val < 0)
-                          return <Mark key={`y-${index}-${i}`} label="役" value={-1} />
+                          return <Mark key={`y-${player}-minus-${index}-${i}`} label="役" value={-1} />
                         return null
                       }
 
                       if (y.winner === player)
-                        return <Mark key={`yw${index}-${i}`} label="役" value={1} />
+                        return <Mark key={`y-${player}-win-${index}-${i}`} label="役" value={1} />
                       if (y.discarder === player || y.responsibility === player)
-                        return <Mark key={`yl${index}-${i}`} label="役" value={-1} />
+                        return <Mark key={`y-${player}-lose-${index}-${i}`} label="役" value={-1} />
 
                       return null
                     })}
@@ -591,9 +613,10 @@ function ScoreTable({
           </td>
 
           {players.map(player => {
-            const totalPoint = rounds.reduce((sum, round) => {
-              const results = recalcRound(round.scores)
-              const r = results.find(r => r.player === player)
+
+            const totalPoint = allResults.reduce((sum, results) => {
+              const map = Object.fromEntries(results.map(r => [r.player, r]))
+              const r = map[player]
               return sum + (r ? r.point : 0)
             }, 0)
 
@@ -640,6 +663,46 @@ function ScoreTable({
   )
 }
 
+type InputSectionProps = {
+  players: Player[]
+
+  inputScores: Record<Player, ScoreState>
+  setInputScores: React.Dispatch<
+    React.SetStateAction<Record<Player, ScoreState>>
+  >
+
+  firstInputRef: React.RefObject<HTMLInputElement | null>
+
+  mode: Mode
+  setMode: React.Dispatch<React.SetStateAction<Mode>>
+
+  setActiveRoundIndex: React.Dispatch<
+    React.SetStateAction<number | null>
+  >
+
+  emptyScores: Record<Player, ScoreState>
+
+  validateYakumanInput: () => boolean
+  buildEvents: () => Round["events"]
+  normalizeScores: (
+    scores: Record<Player, ScoreState>
+  ) => Record<Player, ScoreState>
+
+  setCurrentSession: React.Dispatch<
+    React.SetStateAction<Session | null>
+  >
+
+  setSessions: React.Dispatch<
+    React.SetStateAction<Session[]>
+  >
+
+  resetYakumanState: () => void
+
+  activeRoundIndex: number | null
+
+  deleteRound: () => void
+}
+
 function InputSection({
   players,
   inputScores,
@@ -657,7 +720,7 @@ function InputSection({
   resetYakumanState,
   activeRoundIndex,
   deleteRound
-}: any) {
+}: InputSectionProps) {
   return (
     <table
       style={{
@@ -863,6 +926,53 @@ function InputSection({
   )
 }
 
+type BonusSectionProps = {
+  players: Player[]
+
+  showTobashi: boolean
+  setShowTobashi: React.Dispatch<React.SetStateAction<boolean>>
+  tobashiBy: Player | ""
+  setTobashiBy: React.Dispatch<React.SetStateAction<Player | "">>
+  tobashiTargets: Player[]
+  setTobashiTargets: React.Dispatch<React.SetStateAction<Player[]>>
+
+  showYakuman: boolean
+  setShowYakuman: React.Dispatch<React.SetStateAction<boolean>>
+
+  yakumanWinner: Player | null
+  setYakumanWinner: React.Dispatch<React.SetStateAction<Player | null>>
+
+  yakumanDealer: Player | ""
+  setYakumanDealer: React.Dispatch<React.SetStateAction<Player | "">>
+
+  yakumanTypeKey: string | null
+  setYakumanTypeKey: React.Dispatch<React.SetStateAction<string | null>>
+
+  yakumanType: "tsumo" | "ron"
+  setYakumanType: React.Dispatch<React.SetStateAction<"tsumo" | "ron">>
+
+  yakumanRole: "parent" | "child"
+  setYakumanRole: React.Dispatch<React.SetStateAction<"parent" | "child">>
+
+  yakumanDiscarder: Player | ""
+  setYakumanDiscarder: React.Dispatch<React.SetStateAction<Player | "">>
+
+  yakumanResponsibility: Player | ""
+  setYakumanResponsibility: React.Dispatch<React.SetStateAction<Player | "">>
+
+  yakumanMemo: string
+  setYakumanMemo: React.Dispatch<React.SetStateAction<string>>
+
+  yakumanAdjustMap: Record<Player, number | "">
+  setYakumanAdjustMap: React.Dispatch<
+    React.SetStateAction<Record<Player, number | "">>
+  >
+
+  selectedYakumanType: YakumanType | null
+
+  needResponsibility: boolean
+}
+
 function BonusSection({
   players,
   showTobashi,
@@ -893,7 +1003,7 @@ function BonusSection({
   setYakumanAdjustMap,
   selectedYakumanType,
   needResponsibility
-}: any) {
+}: BonusSectionProps) {
   return (
     <>
       {/* === 飛ばし祝儀トグル === */}
@@ -1121,27 +1231,28 @@ function BonusSection({
           )}
 
           {/* 手動祝儀入力 */}
-          {selectedYakumanType?.directAdjust === 1 && (
-            <div style={{ marginBottom: "8px" }}>
-              祝儀ポイント（直接入力）：
-              {players.map(p => (
-                <div key={p}>
-                  {p}：
-                  <input
-                    type="number"
-                    value={yakumanAdjustMap[p]}
-                    onChange={e =>
-                      setYakumanAdjustMap(prev => ({
-                        ...prev,
-                        [p]: e.target.value === "" ? "" : Number(e.target.value),
-                      }))
-                    }
-                    style={{ marginLeft: "8px", width: "80px" }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
+          {selectedYakumanType &&
+            selectedYakumanType.directAdjust === 1 && (
+              <div style={{ marginBottom: "8px" }}>
+                祝儀ポイント（直接入力）：
+                {players.map(p => (
+                  <div key={p}>
+                    {p}：
+                    <input
+                      type="number"
+                      value={yakumanAdjustMap[p]}
+                      onChange={e =>
+                        setYakumanAdjustMap(prev => ({
+                          ...prev,
+                          [p]: e.target.value === "" ? "" : Number(e.target.value),
+                        }))
+                      }
+                      style={{ marginLeft: "8px", width: "80px" }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
         </div>
       )}
 
@@ -1164,12 +1275,12 @@ function App() {
   const [hasLoaded, setHasLoaded] = useState(false)
 
   /* ========= 画面操作用の状態（初期データ） ========= */
-  const emptyScores: Record<Player, ScoreState> = {
-    A: { value: "", updatedAt: null },
-    B: { value: "", updatedAt: null },
-    C: { value: "", updatedAt: null },
-    D: { value: "", updatedAt: null },
-  }
+  const emptyScores = Object.fromEntries(
+    PLAYERS.map(p => [
+      p,
+      { value: "", updatedAt: null }
+    ])
+  ) as Record<Player, ScoreState>
 
   /* ========= 画面操作用の状態 ========= */
   const [mode, setMode] = useState<Mode>("idle")
@@ -1189,13 +1300,14 @@ function App() {
   const [yakumanResponsibility, setYakumanResponsibility] = useState<Player | "">("")
   const [yakumanMemo, setYakumanMemo] = useState("")
 
-  const [yakumanAdjustMap, setYakumanAdjustMap] = useState<Record<Player, number | "">>({
-    A: "",
-    B: "",
-    C: "",
-    D: "",
-  })
+  function createEmptyAdjustMap() {
+    return Object.fromEntries(
+      PLAYERS.map(p => [p, ""])
+    ) as Record<Player, number | "">
+  }
 
+  const [yakumanAdjustMap, setYakumanAdjustMap] =
+    useState<Record<Player, number | "">>(createEmptyAdjustMap())
 
   /* ========= 画面操作用の状態（補助） ========= */
   // Sessionタイトル編集用
@@ -1210,12 +1322,26 @@ function App() {
 
   /* ========= 派生データ ========= */
   const rounds = currentSession?.rounds ?? []
+  const allResults = useMemo(() => {
+    if (!currentSession) return []
+    return currentSession.rounds.map(round =>
+      recalcRound(round.scores)
+    )
+  }, [currentSession])
 
-  const selectedYakumanType = YAKUMAN_TYPES.find(
-    t => t.key === yakumanTypeKey
-  )
+  const settlementResults = useMemo(() => {
+    if (!currentSession) return []
+    return calcSettlement4p(
+      currentSession.rounds,
+      currentSession.settlement
+    )
+  }, [currentSession])
 
-  const needResponsibility = selectedYakumanType?.responsibility === 1
+  const selectedYakumanType =
+    YAKUMAN_TYPES.find(t => t.key === yakumanTypeKey) ?? null
+
+  const needResponsibility =
+    selectedYakumanType ? selectedYakumanType.responsibility === 1 : false
 
   /* ========= 自動処理（useEffect） ========= */
   // ✅ 起動時復元
@@ -1239,6 +1365,18 @@ function App() {
   }, [sessions, hasLoaded])
 
   /* ========= 初期ロード制御 ========= */
+
+  const bonusPt = useMemo(() => {
+    if (!currentSession) {
+      return Object.fromEntries(
+        PLAYERS.map(p => [p, 0])
+      ) as Record<Player, number>
+    }
+
+    return calcBonusPoints(currentSession.rounds)
+  }, [currentSession])
+
+
   if (!hasLoaded) {
     return <div style={{ padding: "16px" }}>Loading...</div>
   }
@@ -1284,16 +1422,11 @@ function App() {
     setYakumanDiscarder("")
     setYakumanResponsibility("")
     setYakumanMemo("")
-    setYakumanAdjustMap({
-      A: "",
-      B: "",
-      C: "",
-      D: ""
-    })
+    setYakumanAdjustMap(createEmptyAdjustMap())
   }
 
   function validateDirectPoints(map: Record<Player, number | "">): string | null {
-    const values = (["A", "B", "C", "D"] as Player[]).map(p =>
+    const values = PLAYERS.map(p =>
       Number(map[p] || 0)
     )
 
@@ -1315,7 +1448,11 @@ function App() {
 
   // 祝儀入力のバリデーション共通化
   function validateYakumanInput(): boolean {
-    if (yakumanWinner && selectedYakumanType?.directAdjust === 1) {
+    if (
+      yakumanWinner &&
+      selectedYakumanType &&
+      selectedYakumanType.directAdjust === 1
+    ) {
       const error = validateDirectPoints(yakumanAdjustMap)
       if (error) {
         alert(error)
@@ -1357,13 +1494,10 @@ function App() {
               : undefined,
           memo: yakumanMemo || undefined,
           directPoints:
-            selected?.directAdjust === 1
-              ? {
-                A: Number(yakumanAdjustMap.A || 0),
-                B: Number(yakumanAdjustMap.B || 0),
-                C: Number(yakumanAdjustMap.C || 0),
-                D: Number(yakumanAdjustMap.D || 0)
-              }
+            selected.directAdjust === 1
+              ? Object.fromEntries(
+                PLAYERS.map(p => [p, Number(yakumanAdjustMap[p] || 0)])
+              ) as Record<Player, number>
               : undefined
         }]
       }
@@ -1405,42 +1539,26 @@ function App() {
       setYakumanMemo(y.memo ?? "")
 
       if (y.directPoints !== undefined) {
-        setYakumanAdjustMap({
-          A: y.directPoints.A ?? "",
-          B: y.directPoints.B ?? "",
-          C: y.directPoints.C ?? "",
-          D: y.directPoints.D ?? "",
-        })
+        setYakumanAdjustMap(
+          Object.fromEntries(
+            PLAYERS.map(p => [
+              p,
+              y.directPoints?.[p] ?? ""
+            ])
+          ) as Record<Player, number | "">
+        )
       } else {
-        setYakumanAdjustMap({
-          A: "",
-          B: "",
-          C: "",
-          D: "",
-        })
+        setYakumanAdjustMap(createEmptyAdjustMap())
       }
+
     } else {
-      setShowYakuman(false)
-      setYakumanWinner(null)
-      setYakumanDealer("")
-      setYakumanTypeKey(null)
-      setYakumanType("tsumo")
-      setYakumanRole("child")
-      setYakumanDiscarder("")
-      setYakumanResponsibility("")
-      setYakumanMemo("")
-      setYakumanAdjustMap({
-        A: "",
-        B: "",
-        C: "",
-        D: "",
-      })
+      resetYakumanState()
+
     }
   }
 
   /* ========= 画面描画 ========= */
-  const players: Player[] = ["A", "B", "C", "D"]
-  const bonusPt = calcBonusPoints(rounds)
+  const players = PLAYERS
 
   return (
     <div style={{ padding: "16px" }}>
@@ -1648,13 +1766,13 @@ function App() {
 
           <ScoreTable
             rounds={rounds}
+            allResults={allResults}
             players={players}
             mode={mode}
             activeRoundIndex={activeRoundIndex}
             setMode={setMode}
             setActiveRoundIndex={setActiveRoundIndex}
             loadRoundToUI={loadRoundToUI}
-            recalcRound={recalcRound}
           />
 
           {/* ④ 入力中の半荘 */}
@@ -1856,11 +1974,7 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {calcSettlement4p(
-                currentSession.rounds,
-                players,
-                currentSession.settlement
-              ).map(r => {
+              {settlementResults.map(r => {
                 const abs = Math.abs(r.final)
 
                 let label = "±0円"
