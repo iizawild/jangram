@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 
 type Player = "A" | "B" | "C" | "D"
 
-type Mode = "idle" | "edit" | "delete"
+type Mode = "idle" | "edit"
 
 type Settlement = {
   rateYenPerPt: number        // 1ptあたりの円
@@ -481,6 +481,31 @@ function App() {
   }
 
   /* ========= 処理関数 ========= */
+  function deleteRound() {
+    if (activeRoundIndex === null) return
+
+    setCurrentSession(prev => {
+      if (!prev) return prev
+
+      const updated = {
+        ...prev,
+        rounds: prev.rounds.filter((_, i) => i !== activeRoundIndex),
+      }
+
+      setSessions(sessions =>
+        sessions.map(s => (s.id === updated.id ? updated : s))
+      )
+
+      return updated
+    })
+
+    // 状態リセット
+    setMode("idle")
+    setActiveRoundIndex(null)
+    setInputScores(emptyScores)
+    resetYakumanState()
+  }
+
   function resetYakumanState() {
     setShowTobashi(false)
     setShowYakuman(false)
@@ -523,6 +548,65 @@ function App() {
     }
 
     return null
+  }
+
+  // 祝儀入力のバリデーション共通化
+  function validateYakumanInput(): boolean {
+    if (yakumanWinner && selectedYakumanType?.directAdjust === 1) {
+      const error = validateDirectPoints(yakumanAdjustMap)
+      if (error) {
+        alert(error)
+        return false
+      }
+    }
+    return true
+  }
+
+  // イベント生成を共通化
+  function buildEvents(): Round["events"] {
+    const events: Round["events"] = {}
+
+    if (tobashiBy && tobashiTargets.length > 0) {
+      events.tobashi = [{
+        by: tobashiBy,
+        targets: tobashiTargets
+      }]
+    }
+
+    if (yakumanWinner && yakumanTypeKey) {
+      const selected = YAKUMAN_TYPES.find(t => t.key === yakumanTypeKey)
+
+      if (selected) {
+        events.yakuman = [{
+          winner: yakumanWinner,
+          key: yakumanTypeKey,
+          count: selected.count,
+          type: yakumanType,
+          role: yakumanRole,
+          dealer: yakumanDealer || undefined,
+          discarder:
+            yakumanType === "ron" && yakumanDiscarder
+              ? yakumanDiscarder
+              : undefined,
+          responsibility:
+            needResponsibility && yakumanResponsibility
+              ? yakumanResponsibility
+              : undefined,
+          memo: yakumanMemo || undefined,
+          directPoints:
+            selected?.directAdjust === 1
+              ? {
+                A: Number(yakumanAdjustMap.A || 0),
+                B: Number(yakumanAdjustMap.B || 0),
+                C: Number(yakumanAdjustMap.C || 0),
+                D: Number(yakumanAdjustMap.D || 0)
+              }
+              : undefined
+        }]
+      }
+    }
+
+    return events
   }
 
   function loadRoundToUI(round: Round) {
@@ -965,10 +1049,6 @@ function App() {
                         <span style={{ color: "#b58900" }}>修正中</span>
                       )}
 
-                      {/* 削除中 */}
-                      {mode === "delete" && activeRoundIndex === index && (
-                        <span style={{ color: "#c00" }}>削除中</span>
-                      )}
                     </td>
                   </tr>
                 )
@@ -1097,7 +1177,7 @@ function App() {
                 >
                   <>
                     {/* === キャンセル（edit / delete のときだけ表示） === */}
-                    {(mode === "edit" || mode === "delete") && (
+                    {mode === "edit" && (
                       <button
                         onClick={() => {
                           setMode("idle")
@@ -1107,9 +1187,13 @@ function App() {
                           // ★ 祝儀UIの状態もリセット
                           resetYakumanState()
                         }}
-                        style={{ marginRight: "6px" }}
+                        style={{
+                          marginRight: "6px",
+                          padding: "2px 4px",
+                          fontSize: "12px"
+                        }}
                       >
-                        キャンセル
+                        取り消し
                       </button>
                     )}
 
@@ -1119,60 +1203,20 @@ function App() {
                         // ===== 新規追加 =====
                         if (mode === "idle") {
 
-                          if (yakumanWinner && selectedYakumanType?.directAdjust === 1) {
-                            const error = validateDirectPoints(yakumanAdjustMap)
-                            if (error) {
-                              alert(error)
-                              return
-                            }
-                          }
+                          if (!validateYakumanInput()) return
 
-                          const events: Round["events"] = {}
-
-                          if (tobashiBy && tobashiTargets.length > 0) {
-                            events.tobashi = [{
-                              by: tobashiBy,
-                              targets: tobashiTargets,
-                            }]
-                          }
-                          if (yakumanWinner && yakumanTypeKey) {
-                            const selected = YAKUMAN_TYPES.find(t => t.key === yakumanTypeKey)
-
-                            if (selected) {
-                              events.yakuman = [{
-                                winner: yakumanWinner,
-                                key: yakumanTypeKey,              // （すでに追加済みならそのまま）
-                                count: selected.count,
-                                type: yakumanType,
-                                role: yakumanRole,
-                                dealer: yakumanDealer || undefined,  // ★これ追加
-                                discarder: yakumanType === "ron" && yakumanDiscarder
-                                  ? yakumanDiscarder
-                                  : undefined,
-                                responsibility: needResponsibility && yakumanResponsibility
-                                  ? yakumanResponsibility
-                                  : undefined,
-                                memo: yakumanMemo || undefined,
-                                directPoints:
-                                  selected?.directAdjust === 1
-                                    ? {
-                                      A: Number(yakumanAdjustMap.A || 0),
-                                      B: Number(yakumanAdjustMap.B || 0),
-                                      C: Number(yakumanAdjustMap.C || 0),
-                                      D: Number(yakumanAdjustMap.D || 0),
-                                    }
-                                    : undefined,
-                              }]
-                            }
-                          }
-
+                          const events = buildEvents()
                           const normalized = normalizeScores(inputScores)
+
+                          // ✅ イベントがあるか安全に判定
+                          const hasEvents =
+                            !!(events?.tobashi?.length || events?.yakuman?.length)
 
                           setCurrentSession(prev => {
                             if (!prev) return prev
 
                             const round: Round =
-                              events.tobashi || events.yakuman
+                              hasEvents
                                 ? { scores: normalized, events }
                                 : { scores: normalized }
 
@@ -1200,63 +1244,20 @@ function App() {
                         // ===== 修正確定 =====
                         if (mode === "edit" && activeRoundIndex !== null) {
 
-                          if (yakumanWinner && selectedYakumanType?.directAdjust === 1) {
-                            const error = validateDirectPoints(yakumanAdjustMap)
-                            if (error) {
-                              alert(error)
-                              return
-                            }
-                          }
+                          if (!validateYakumanInput()) return
 
-                          const events: Round["events"] = {}
-
-                          if (tobashiBy && tobashiTargets.length > 0) {
-                            events.tobashi = [{
-                              by: tobashiBy,
-                              targets: tobashiTargets,
-                            }]
-                          }
-
-                          if (yakumanWinner && yakumanTypeKey) {
-                            const selected = YAKUMAN_TYPES.find(t => t.key === yakumanTypeKey)
-
-                            if (selected) {
-                              events.yakuman = [{
-                                winner: yakumanWinner,
-                                key: yakumanTypeKey,
-                                count: selected.count,
-                                type: yakumanType,
-                                role: yakumanRole,
-                                dealer: yakumanDealer || undefined,  // ★これ追加
-                                discarder:
-                                  yakumanType === "ron" && yakumanDiscarder
-                                    ? yakumanDiscarder
-                                    : undefined,
-                                responsibility:
-                                  needResponsibility && yakumanResponsibility
-                                    ? yakumanResponsibility
-                                    : undefined,
-                                memo: yakumanMemo || undefined,
-                                directPoints:
-                                  selected?.directAdjust === 1
-                                    ? {
-                                      A: Number(yakumanAdjustMap.A || 0),
-                                      B: Number(yakumanAdjustMap.B || 0),
-                                      C: Number(yakumanAdjustMap.C || 0),
-                                      D: Number(yakumanAdjustMap.D || 0),
-                                    }
-                                    : undefined,
-                              }]
-                            }
-                          }
-
+                          const events = buildEvents()
                           const normalized = normalizeScores(inputScores)
+
+                          // ✅ eventsが実際にあるか安全に判定
+                          const hasEvents =
+                            !!(events?.tobashi?.length || events?.yakuman?.length)
 
                           setCurrentSession(prev => {
                             if (!prev || activeRoundIndex === null) return prev
 
                             const round: Round =
-                              events.tobashi || events.yakuman
+                              hasEvents
                                 ? { scores: normalized, events }
                                 : { scores: normalized }
 
@@ -1286,64 +1287,25 @@ function App() {
                           return
                         }
 
-                        // ===== 削除確定 =====
-                        if (mode === "delete" && activeRoundIndex !== null) {
-                          setCurrentSession(prev => {
-                            if (!prev || activeRoundIndex === null) return prev
+                      }}
 
-                            const updated = {
-                              ...prev,
-                              rounds: prev.rounds.filter((_, i) => i !== activeRoundIndex),
-                            }
-
-                            setSessions(sessions =>
-                              sessions.map(s => (s.id === updated.id ? updated : s))
-                            )
-
-                            return updated
-                          })
-
-                          setMode("idle")
-                          setActiveRoundIndex(null)
-                          setInputScores(emptyScores)
-
-                          // ★ 祝儀UIの状態もリセット
-                          resetYakumanState()
-                        }
+                      style={{
+                        marginRight: "6px",
+                        padding: "2px 4px",
+                        fontSize: "12px"
                       }}
                     >
                       {mode === "idle" && "確定"}
                       {mode === "edit" && "修正確定"}
-                      {mode === "delete" && "削除確定"}
                     </button>
 
                     {mode === "edit" && (
                       <button
-                        onClick={() => {
-                          if (activeRoundIndex === null) return
-
-                          setCurrentSession(prev => {
-                            if (!prev) return prev
-
-                            const updated = {
-                              ...prev,
-                              rounds: prev.rounds.filter((_, i) => i !== activeRoundIndex),
-                            }
-
-                            setSessions(sessions =>
-                              sessions.map(s => (s.id === updated.id ? updated : s))
-                            )
-
-                            return updated
-                          })
-
-                          setMode("idle")
-                          setActiveRoundIndex(null)
-                          setInputScores(emptyScores)
-                          resetYakumanState()
-                        }}
+                        onClick={deleteRound}
                         style={{
-                          marginLeft: "6px",
+                          marginRight: "6px",
+                          padding: "2px 4px",
+                          fontSize: "12px",
                           color: "red"
                         }}
                       >
