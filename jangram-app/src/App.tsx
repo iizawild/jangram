@@ -673,34 +673,9 @@ type InputSectionProps = {
 
   firstInputRef: React.RefObject<HTMLInputElement | null>
 
-  mode: Mode
-  setMode: React.Dispatch<React.SetStateAction<Mode>>
-
-  setActiveRoundIndex: React.Dispatch<
-    React.SetStateAction<number | null>
-  >
-
-  emptyScores: Record<Player, ScoreState>
-
-  validateYakumanInput: () => boolean
-  buildEvents: () => Round["events"]
   normalizeScores: (
     scores: Record<Player, ScoreState>
   ) => Record<Player, ScoreState>
-
-  setCurrentSession: React.Dispatch<
-    React.SetStateAction<Session | null>
-  >
-
-  setSessions: React.Dispatch<
-    React.SetStateAction<Session[]>
-  >
-
-  resetYakumanState: () => void
-
-  activeRoundIndex: number | null
-
-  deleteRound: () => void
 }
 
 function InputSection({
@@ -708,18 +683,7 @@ function InputSection({
   inputScores,
   setInputScores,
   firstInputRef,
-  mode,
-  setMode,
-  setActiveRoundIndex,
-  emptyScores,
-  validateYakumanInput,
-  buildEvents,
   normalizeScores,
-  setCurrentSession,
-  setSessions,
-  resetYakumanState,
-  activeRoundIndex,
-  deleteRound
 }: InputSectionProps) {
   return (
 
@@ -741,11 +705,11 @@ function InputSection({
               border: "1px solid #ccc",
               padding: "2px",
               fontWeight: "bold",
-              width: "40px",
-              whiteSpace: "nowrap", 
+              whiteSpace: "nowrap",
+              minWidth: "60px",
             }}
           >
-            入力
+            点棒入力
           </td>
 
           {/* 各プレイヤー入力欄 */}
@@ -774,163 +738,17 @@ function InputSection({
                 onBlur={() => {
                   setInputScores(prev => normalizeScores(prev))
                 }}
-                style={{ 
+                style={{
                   width: "100%",
                   boxSizing: "border-box"
                 }}
               />
             </td>
           ))}
-
-          <td
-            style={{
-              border: "1px solid #ccc",
-              padding: "2px",
-              textAlign: "center",
-              width: "80px",
-              whiteSpace: "nowrap"
-            }}
-          >
-            <>
-              {/* === キャンセル（edit / delete のときだけ表示） === */}
-              {mode === "edit" && (
-                <button
-                  onClick={() => {
-                    setMode("idle")
-                    setActiveRoundIndex(null)
-                    setInputScores(emptyScores)
-
-                    // ★ 祝儀UIの状態もリセット
-                    resetYakumanState()
-                  }}
-                  style={{
-                    marginRight: "6px",
-                    padding: "2px 4px",
-                    fontSize: "12px"
-                  }}
-                >
-                  取り消し
-                </button>
-              )}
-
-              {/* === 確定 === */}
-              <button
-                onClick={() => {
-                  // ===== 新規追加 =====
-                  if (mode === "idle") {
-
-                    if (!validateYakumanInput()) return
-
-                    const events = buildEvents()
-                    const normalized = normalizeScores(inputScores)
-
-                    // ✅ イベントがあるか安全に判定
-                    const hasEvents =
-                      !!(events?.tobashi?.length || events?.yakuman?.length)
-
-                    setCurrentSession(prev => {
-                      if (!prev) return prev
-
-                      const round: Round =
-                        hasEvents
-                          ? { scores: normalized, events }
-                          : { scores: normalized }
-
-                      const updated = {
-                        ...prev,
-                        rounds: [...prev.rounds, round],
-                      }
-
-                      // ✅ sessions 側も必ず更新
-                      setSessions(sessions =>
-                        sessions.map(s => (s.id === updated.id ? updated : s))
-                      )
-
-                      return updated
-                    })
-
-                    setInputScores(emptyScores)
-
-                    // ★ 祝儀UIの状態もリセット
-                    resetYakumanState()
-
-                    return
-                  }
-
-                  // ===== 修正確定 =====
-                  if (mode === "edit" && activeRoundIndex !== null) {
-
-                    if (!validateYakumanInput()) return
-
-                    const events = buildEvents()
-                    const normalized = normalizeScores(inputScores)
-
-                    // ✅ eventsが実際にあるか安全に判定
-                    const hasEvents =
-                      !!(events?.tobashi?.length || events?.yakuman?.length)
-
-                    setCurrentSession(prev => {
-                      if (!prev || activeRoundIndex === null) return prev
-
-                      const round: Round =
-                        hasEvents
-                          ? { scores: normalized, events }
-                          : { scores: normalized }
-
-                      const updated = {
-                        ...prev,
-                        rounds: prev.rounds.map((r, i) =>
-                          i === activeRoundIndex
-                            ? round
-                            : r
-                        ),
-                      }
-
-                      setSessions(sessions =>
-                        sessions.map(s => (s.id === updated.id ? updated : s))
-                      )
-
-                      return updated
-                    })
-
-                    setMode("idle")
-                    setActiveRoundIndex(null)
-                    setInputScores(emptyScores)
-
-                    // ★ 祝儀UIの状態もリセット
-                    resetYakumanState()
-
-                    return
-                  }
-
-                }}
-
-                style={{
-                  marginRight: "6px",
-                  padding: "2px 4px",
-                  fontSize: "12px"
-                }}
-              >
-                {mode === "idle" && "確定"}
-                {mode === "edit" && "修正確定"}
-              </button>
-
-              {mode === "edit" && (
-                <button
-                  onClick={deleteRound}
-                  style={{
-                    marginRight: "6px",
-                    padding: "2px 4px",
-                    fontSize: "12px",
-                    color: "red"
-                  }}
-                >
-                  削除確定
-                </button>
-              )}
-            </>
-          </td>
         </tr>
+
+
+
       </tbody>
     </table>
   )
@@ -1266,13 +1084,6 @@ function BonusSection({
         </div>
       )}
 
-      <hr
-        style={{
-          margin: "32px 0",
-          border: "none",
-          borderTop: "2px solid #999",
-        }}
-      />
     </>
   )
 }
@@ -1785,18 +1596,7 @@ function App() {
             inputScores={inputScores}
             setInputScores={setInputScores}
             firstInputRef={firstInputRef}
-            mode={mode}
-            setMode={setMode}
-            setActiveRoundIndex={setActiveRoundIndex}
-            emptyScores={emptyScores}
-            validateYakumanInput={validateYakumanInput}
-            buildEvents={buildEvents}
             normalizeScores={normalizeScores}
-            setCurrentSession={setCurrentSession}
-            setSessions={setSessions}
-            resetYakumanState={resetYakumanState}
-            activeRoundIndex={activeRoundIndex}
-            deleteRound={deleteRound}
           />
 
           <BonusSection
@@ -1829,6 +1629,147 @@ function App() {
             setYakumanAdjustMap={setYakumanAdjustMap}
             selectedYakumanType={selectedYakumanType}
             needResponsibility={needResponsibility}
+          />
+
+          {/* === ボタン群 === */}
+          <div
+            style={{
+              marginTop: "12px",
+              marginBottom: "8px",
+              display: "flex",
+              justifyContent: "center",
+              gap: "8px",
+              flexWrap: "wrap"
+            }}
+          >
+
+            {/* 取り消し */}
+            {mode === "edit" && (
+              <button
+                onClick={() => {
+                  setMode("idle")
+                  setActiveRoundIndex(null)
+                  setInputScores(emptyScores)
+                  resetYakumanState()
+                }}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: "14px"
+                }}
+              >
+                取り消し
+              </button>
+            )}
+
+            {/* 確定 */}
+            <button
+              onClick={() => {
+
+                if (!validateYakumanInput()) return
+
+                // ===== 新規追加 =====
+                if (mode === "idle") {
+
+                  const events = buildEvents()
+                  const normalized = normalizeScores(inputScores)
+
+                  const hasEvents =
+                    !!(events?.tobashi?.length || events?.yakuman?.length)
+
+                  setCurrentSession(prev => {
+                    if (!prev) return prev
+
+                    const round =
+                      hasEvents
+                        ? { scores: normalized, events }
+                        : { scores: normalized }
+
+                    const updated = {
+                      ...prev,
+                      rounds: [...prev.rounds, round],
+                    }
+
+                    setSessions(s =>
+                      s.map(x => x.id === updated.id ? updated : x)
+                    )
+
+                    return updated
+                  })
+
+                  setInputScores(emptyScores)
+                  resetYakumanState()
+                  return
+                }
+
+                // ===== 修正 =====
+                if (mode === "edit" && activeRoundIndex !== null) {
+
+                  const events = buildEvents()
+                  const normalized = normalizeScores(inputScores)
+
+                  const hasEvents =
+                    !!(events?.tobashi?.length || events?.yakuman?.length)
+
+                  setCurrentSession(prev => {
+                    if (!prev) return prev
+
+                    const round =
+                      hasEvents
+                        ? { scores: normalized, events }
+                        : { scores: normalized }
+
+                    const updated = {
+                      ...prev,
+                      rounds: prev.rounds.map((r, i) =>
+                        i === activeRoundIndex ? round : r
+                      ),
+                    }
+
+                    setSessions(s =>
+                      s.map(x => x.id === updated.id ? updated : x)
+                    )
+
+                    return updated
+                  })
+
+                  setMode("idle")
+                  setActiveRoundIndex(null)
+                  setInputScores(emptyScores)
+                  resetYakumanState()
+                }
+
+              }}
+              style={{
+                padding: "6px 10px",
+                fontSize: "14px"
+              }}
+            >
+              {mode === "idle" && "確定"}
+              {mode === "edit" && "修正確定"}
+            </button>
+
+            {/* 削除 */}
+            {mode === "edit" && (
+              <button
+                onClick={deleteRound}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: "14px",
+                  color: "red"
+                }}
+              >
+                削除確定
+              </button>
+            )}
+
+          </div>
+
+          <hr
+            style={{
+              margin: "32px 0",
+              border: "none",
+              borderTop: "2px solid #999",
+            }}
           />
 
           {/* ⑤ 精算条件（← 下の方へ移動） */}
