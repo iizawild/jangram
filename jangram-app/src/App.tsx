@@ -774,7 +774,10 @@ function InputSection({
                 onBlur={() => {
                   setInputScores(prev => normalizeScores(prev))
                 }}
-                style={{ width: "56px" }}
+                style={{ 
+                  width: "100%",
+                  boxSizing: "border-box"
+                }}
               />
             </td>
           ))}
