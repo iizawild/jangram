@@ -741,6 +741,8 @@ function InputSection({
               border: "1px solid #ccc",
               padding: "2px",
               fontWeight: "bold",
+              width: "40px",
+              whiteSpace: "nowrap", 
             }}
           >
             入力
@@ -753,7 +755,6 @@ function InputSection({
               style={{
                 border: "1px solid #ccc",
                 padding: "2px",
-                width: "60px"
               }}
             >
               <input
@@ -773,7 +774,7 @@ function InputSection({
                 onBlur={() => {
                   setInputScores(prev => normalizeScores(prev))
                 }}
-                style={{ width: "64px" }}
+                style={{ width: "56px" }}
               />
             </td>
           ))}
@@ -783,6 +784,8 @@ function InputSection({
               border: "1px solid #ccc",
               padding: "2px",
               textAlign: "center",
+              width: "80px",
+              whiteSpace: "nowrap"
             }}
           >
             <>
