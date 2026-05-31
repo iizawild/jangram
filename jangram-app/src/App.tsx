@@ -722,21 +722,24 @@ function InputSection({
   deleteRound
 }: InputSectionProps) {
   return (
+
     <table
       style={{
         borderCollapse: "collapse",
         width: "100%",
         marginTop: "8px",
         backgroundColor: "#f9f9f9",
+        tableLayout: "fixed",
       }}
     >
+
       <tbody>
         <tr>
           {/* 行ラベル */}
           <td
             style={{
               border: "1px solid #ccc",
-              padding: "4px",
+              padding: "2px",
               fontWeight: "bold",
             }}
           >
@@ -749,7 +752,8 @@ function InputSection({
               key={player}
               style={{
                 border: "1px solid #ccc",
-                padding: "4px",
+                padding: "2px",
+                width: "60px"
               }}
             >
               <input
@@ -769,7 +773,7 @@ function InputSection({
                 onBlur={() => {
                   setInputScores(prev => normalizeScores(prev))
                 }}
-                style={{ width: "80px" }}
+                style={{ width: "64px" }}
               />
             </td>
           ))}
@@ -777,7 +781,7 @@ function InputSection({
           <td
             style={{
               border: "1px solid #ccc",
-              padding: "4px",
+              padding: "2px",
               textAlign: "center",
             }}
           >
