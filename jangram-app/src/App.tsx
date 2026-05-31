@@ -410,6 +410,8 @@ type ScoreTableProps = {
   loadRoundToUI: (round: Round) => void
 
   allResults: RoundResult[][]
+
+  bonusPt: Record<Player, number>
 }
 
 function ScoreTable({
@@ -420,7 +422,8 @@ function ScoreTable({
   activeRoundIndex,
   setMode,
   setActiveRoundIndex,
-  loadRoundToUI
+  loadRoundToUI,
+  bonusPt
 }: ScoreTableProps) {
   return (
 
@@ -657,6 +660,81 @@ function ScoreTable({
             }}
           />
         </tr>
+
+        {/* ===== 祝儀行 ===== */}
+        <tr style={{ backgroundColor: "#f9f9f9" }}>
+          <td
+            style={{
+              border: "1px solid #ccc",
+              padding: "2px",
+              fontWeight: "bold",
+            }}
+          >
+            祝儀
+          </td>
+
+          {players.map(player => {
+            return [
+              <td
+                key={`${player}-bonus`}
+                style={{
+                  border: "1px solid #ccc",
+                  padding: "2px",
+                  textAlign: "right",
+                  color: bonusPt[player] < 0 ? "red" : "green",
+                }}
+              >
+                {bonusPt[player].toFixed(1)}
+              </td>,
+              <td key={`${player}-bonus-empty`} style={{ border: "1px solid #ccc" }} />
+            ]
+          })}
+
+          <td style={{ border: "1px solid #ccc" }} />
+        </tr>
+
+        {/* ===== 総合計行 ===== */}
+        <tr style={{ backgroundColor: "#e8f5e9" }}>
+          <td
+            style={{
+              border: "1px solid #ccc",
+              padding: "2px",
+              fontWeight: "bold",
+            }}
+          >
+            総合計
+          </td>
+
+          {players.map(player => {
+
+            const totalPoint = allResults.reduce((sum, results) => {
+              const map = Object.fromEntries(results.map(r => [r.player, r]))
+              const r = map[player]
+              return sum + (r ? r.point : 0)
+            }, 0)
+
+            const total = totalPoint + bonusPt[player]
+
+            return [
+              <td
+                key={`${player}-total`}
+                style={{
+                  border: "1px solid #ccc",
+                  padding: "2px",
+                  textAlign: "right",
+                  fontWeight: "bold",
+                  color: total < 0 ? "red" : "green",
+                }}
+              >
+                {total.toFixed(1)}
+              </td>,
+              <td key={`${player}-total-empty`} style={{ border: "1px solid #ccc" }} />
+            ]
+          })}
+
+          <td style={{ border: "1px solid #ccc" }} />
+        </tr>
+
       </tbody>
     </table>
 
@@ -1586,6 +1664,7 @@ function App() {
             setMode={setMode}
             setActiveRoundIndex={setActiveRoundIndex}
             loadRoundToUI={loadRoundToUI}
+            bonusPt={bonusPt}
           />
 
           {/* ④ 入力中の半荘 */}
@@ -1869,27 +1948,6 @@ function App() {
               borderTop: "1px solid #ddd",
             }}
           />
-
-          <h3 style={{ marginTop: "20px" }}>祝儀pt</h3>
-          <table style={{ borderCollapse: "collapse", marginTop: "8px" }}>
-            <tbody>
-              <tr>
-                {players.map(player => (
-                  <td
-                    key={player}
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "6px 10px",
-                      textAlign: "center",
-                      color: bonusPt[player] < 0 ? "red" : "green",
-                    }}
-                  >
-                    {player}：{bonusPt[player]}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
 
           {/* ⑥ 精算結果（一番最後） */}
           <h3 style={{ textAlign: "center", color: "#333" }}>精算結果</h3>
