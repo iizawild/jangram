@@ -1908,7 +1908,7 @@ function App() {
             <div>
               <label>
                 <span style={labelStyle}>
-                  レート（1ptあたり）：
+                  レート（1ptあたり）
                 </span>
                 <span
                   style={{
@@ -1917,6 +1917,7 @@ function App() {
                     textAlign: "center"
                   }}
                 >
+                  ：
                 </span>
                 <input
                   type="number"
@@ -1948,9 +1949,10 @@ function App() {
             <div style={{ marginTop: "4px" }}>
               <label>
                 <span style={labelStyle}>
-                  場代：
+                  場代
                 </span>
                 <span style={{ display: "inline-block", width: "12px", textAlign: "center" }}>
+                  ：
                 </span>
                 <input
                   type="number"
@@ -1992,9 +1994,10 @@ function App() {
                   <div key={player} style={{ marginBottom: "4px" }}>
                     <label>
                       <span style={labelStyle}>
-                        {player}：
+                        {player}
                       </span>
                       <span style={{ display: "inline-block", width: "12px", textAlign: "center" }}>
+                        ：
                       </span>
 
                       <input
