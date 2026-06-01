@@ -23,16 +23,16 @@ type Round = {
     }[]
 
     yakuman?: {
-      winner: Player
-      key: string
-      type: "tsumo" | "ron"
-      role: "parent" | "child"
-      count: number
-      dealer?: Player   // ← ★追加（役満時の親）
-      discarder?: Player
-      responsibility?: Player
-      memo?: string
-      directPoints?: Record<Player, number>
+      winner: Player      //あがった人
+      key: string         //内部識別用のキー
+      type: "tsumo" | "ron"   //ツモ　か　ロン
+      role: "parent" | "child"  //親役満　か　子役満　
+      count: number       //倍数
+      dealer?: Player     //役満時の親はだれか
+      discarder?: Player  //放銃者
+      responsibility?: Player //責任払い対象
+      memo?: string       //メモ
+      directPoints?: Record<Player, number>   //手動入力時のポイント
     }[]
 
   }
@@ -76,14 +76,14 @@ const TOBASHI_POINT = 10
 const YAKUMAN_TSUMO_CHILD_ALL = 20   // 全員均等
 const YAKUMAN_TSUMO_CHILD_PARENT = 30 // 親負担
 const YAKUMAN_TSUMO_CHILD_CHILD = 15 // 子負担
-const USE_PARENT_EXTRA = true       // false = 全員均等, true = 親負担増
+const USE_PARENT_EXTRA = false       // false = 全員均等, true = 親負担増
 
 type YakumanType = {
-  key: string
-  label: string
-  count: number
-  responsibility: number
-  directAdjust: number
+  key: string     //内部識別用のキー
+  label: string   //UI表示
+  count: number   //倍数（役満1倍 / ダブル2倍 / トリプル3倍）
+  responsibility: number  //責任払いがあるか（1なら必要）
+  directAdjust: number    //手動入力モードか（1なら直接ポイント入力）
 }
 
 // マスターデータ
@@ -353,6 +353,9 @@ function calcSettlement4p(
     return {
       player,
       pt: total,
+      yen,
+      table: tableShare,
+      food,
       final,
     }
   })
@@ -541,6 +544,8 @@ function ScoreTable({
                     })}
 
                     {round.events?.yakuman?.map((y, i) => {
+
+                      // ===== directPoints（手動入力） =====
                       if (y.directPoints !== undefined) {
                         const val = y.directPoints[player] ?? 0
                         if (val > 0)
@@ -550,10 +555,27 @@ function ScoreTable({
                         return null
                       }
 
+                      // ===== 勝者 =====
                       if (y.winner === player)
                         return <Mark key={`y-${player}-win-${index}-${i}`} label="役" value={1} />
-                      if (y.discarder === player || y.responsibility === player)
-                        return <Mark key={`y-${player}-lose-${index}-${i}`} label="役" value={-1} />
+
+                      // ===== ロン（放銃） =====
+                      if (y.type === "ron") {
+                        if (y.discarder === player)
+                          return <Mark key={`y-${player}-lose-${index}-${i}`} label="役" value={-1} />
+                        return null
+                      }
+
+                      // ===== 責任払い =====
+                      if (y.responsibility === player)
+                        return <Mark key={`y-${player}-resp-${index}-${i}`} label="役" value={-1} />
+
+                      // ===== ツモ（ここが今回の修正ポイント） =====
+                      if (y.type === "tsumo") {
+                        if (player !== y.winner) {
+                          return <Mark key={`y-${player}-tsumo-${index}-${i}`} label="役" value={-1} />
+                        }
+                      }
 
                       return null
                     })}
@@ -1963,11 +1985,25 @@ function App() {
           >
             <thead>
               <tr>
-                <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
-                  プレイヤー
+                <th style={{
+                  border: "1px solid #999",
+                  padding: "4px 4px",
+                  width: "40px",
+                  textAlign: "center"
+                }}>
+                  👤
                 </th>
                 <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
                   合計pt
+                </th>
+                <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
+                  円換算
+                </th>
+                <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
+                  場代
+                </th>
+                <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
+                  食事代
                 </th>
                 <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
                   精算
@@ -1982,10 +2018,10 @@ function App() {
                 let color = "#555"
 
                 if (r.final > 0) {
-                  label = `＋${abs.toLocaleString()}円（受取）`
+                  label = `+${abs.toLocaleString()}円`
                   color = "green"
                 } else if (r.final < 0) {
-                  label = `－${abs.toLocaleString()}円（支払）`
+                  label = `-${abs.toLocaleString()}円`
                   color = "red"
                 }
 
@@ -1993,20 +2029,24 @@ function App() {
                   <tr
                     key={r.player}
                     style={{
-                      borderBottom: "1px solid #ccc", // ✅ 横罫線は行で統一
+                      borderBottom: "1px solid #ccc",
                     }}
                   >
+                    {/* 👤（プレイヤー） */}
                     <td
                       style={{
                         borderLeft: "1px solid #ccc",
                         borderRight: "1px solid #ccc",
-                        padding: "6px 10px",
+                        padding: "6px 4px",
+                        width: "40px",
                         textAlign: "center",
+                        fontWeight: "bold"
                       }}
                     >
                       {r.player}
                     </td>
 
+                    {/* 合計pt */}
                     <td
                       style={{
                         borderRight: "1px solid #ccc",
@@ -2017,6 +2057,47 @@ function App() {
                       {r.pt.toFixed(1)}
                     </td>
 
+                    {/* 円換算 */}
+                    <td
+                      style={{
+                        borderRight: "1px solid #ccc",
+                        padding: "6px 10px",
+                        textAlign: "right",
+                        width: "80px"
+                      }}
+                    >
+
+                      {r.yen >= 0
+                        ? `+${r.yen.toLocaleString()}円`
+                        : `-${Math.abs(r.yen).toLocaleString()}円`}
+
+                    </td>
+
+                    {/* 場代 */}
+                    <td
+                      style={{
+                        borderRight: "1px solid #ccc",
+                        padding: "6px 10px",
+                        textAlign: "right",
+                        width: "80px"
+                      }}
+                    >
+                      {r.table === 0 ? "0円" : `-${r.table.toLocaleString()}円`}
+                    </td>
+
+                    {/* 食事代 */}
+                    <td
+                      style={{
+                        borderRight: "1px solid #ccc",
+                        padding: "6px 10px",
+                        textAlign: "right",
+                        width: "80px"
+                      }}
+                    >
+                      {r.food === 0 ? "0円" : `-${r.food.toLocaleString()}円`}
+                    </td>
+
+                    {/* 精算 */}
                     <td
                       style={{
                         borderRight: "1px solid #ccc",
@@ -2024,6 +2105,8 @@ function App() {
                         color,
                         fontWeight: "bold",
                         whiteSpace: "nowrap",
+                        textAlign: "right",
+                        width: "80px"
                       }}
                     >
                       {label}
@@ -2032,14 +2115,10 @@ function App() {
                 )
               })}
             </tbody>
-
           </table>
-
-
           {/* ↑↑↑ 今までのUIここまで ↑↑↑ */}
         </>
       )}
-
     </div>
   )
 }
