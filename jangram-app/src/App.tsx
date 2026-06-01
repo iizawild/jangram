@@ -332,14 +332,28 @@ function calcSettlement4p(
     PLAYERS.map(p => [p, 0])
   ) as Record<Player, number>
 
+  // ✅ 参加回数カウント
+  const playCount = Object.fromEntries(
+    PLAYERS.map(p => [p, 0])
+  ) as Record<Player, number>
+
   rounds.forEach(round => {
-    recalcRound(round.scores).forEach(r => {
+    const results = recalcRound(round.scores)
+
+    results.forEach(r => {
       totalPt[r.player] += r.point
+      playCount[r.player] += 1   // ←参加カウント
     })
   })
 
   const rate = settlement.rateYenPerPt
-  const tableShare = settlement.tableFee / 4
+
+  // ✅ 総参加回数
+  const totalPlays = Object.values(playCount).reduce((a, b) => a + b, 0)
+
+  // ✅ 1回あたり場代
+  const feePerPlay =
+    totalPlays > 0 ? settlement.tableFee / totalPlays : 0
 
   const bonusPt = calcBonusPoints(rounds)
 
@@ -348,13 +362,17 @@ function calcSettlement4p(
     const yen = total * rate
 
     const food = settlement.foodFee[player] ?? 0
-    const final = yen - tableShare - food
+
+    // ✅ 個別場代（ここが変更点）
+    const table = feePerPlay * playCount[player]
+
+    const final = yen - table - food
 
     return {
       player,
       pt: total,
       yen,
-      table: tableShare,
+      table,
       food,
       final,
     }
@@ -1997,9 +2015,6 @@ function App() {
                   合計pt
                 </th>
                 <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
-                  円換算
-                </th>
-                <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
                   場代
                 </th>
                 <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
@@ -2055,22 +2070,6 @@ function App() {
                       }}
                     >
                       {r.pt.toFixed(1)}
-                    </td>
-
-                    {/* 円換算 */}
-                    <td
-                      style={{
-                        borderRight: "1px solid #ccc",
-                        padding: "6px 10px",
-                        textAlign: "right",
-                        width: "80px"
-                      }}
-                    >
-
-                      {r.yen >= 0
-                        ? `+${r.yen.toLocaleString()}円`
-                        : `-${Math.abs(r.yen).toLocaleString()}円`}
-
                     </td>
 
                     {/* 場代 */}
