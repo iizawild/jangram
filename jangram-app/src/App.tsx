@@ -2012,7 +2012,7 @@ function App() {
                   👤
                 </th>
                 <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
-                  合計pt
+                  pt計
                 </th>
                 <th style={{ border: "1px solid #999", padding: "4px 8px" }}>
                   場代
