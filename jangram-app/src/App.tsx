@@ -1208,6 +1208,16 @@ function BonusSection({
 
 function App() {
 
+  /* ========= 共通スタイル ========= */
+
+  const labelStyle: React.CSSProperties = {
+    display: "inline-block",
+    width: "160px",
+    textAlign: "right",
+    whiteSpace: "nowrap",
+    paddingRight: "6px"
+  }
+
   /* ========= セッション・データ状態 ========= */
   const [sessions, setSessions] = useState<Session[]>([])
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
@@ -1897,7 +1907,9 @@ function App() {
             {/* レート */}
             <div>
               <label>
-                レート（1ptあたり）：
+                <span style={labelStyle}>
+                  レート（1ptあたり）：
+                </span>
                 <input
                   type="number"
                   value={currentSession.settlement.rateYenPerPt}
@@ -1914,7 +1926,11 @@ function App() {
                       prev.map(s => (s.id === updated.id ? updated : s))
                     )
                   }}
-                  style={{ marginLeft: "4px", width: "80px" }}
+                  style={{
+                    marginLeft: "4px",
+                    width: "80px",
+                    textAlign: "right"
+                  }}
                 />
                 円
               </label>
@@ -1923,59 +1939,83 @@ function App() {
             {/* 場代 */}
             <div style={{ marginTop: "4px" }}>
               <label>
-                場代：
+                <span style={labelStyle}>
+                  場代：
+                </span>
                 <input
                   type="number"
                   value={currentSession.settlement.tableFee}
                   onChange={e => {
+                    const v = e.target.value
+
                     const updated = {
                       ...currentSession,
                       settlement: {
                         ...currentSession.settlement,
-                        tableFee: Number(e.target.value),
+                        tableFee: v === "" ? 0 : Number(v),
                       },
                     }
+
                     setCurrentSession(updated)
                     setSessions(prev =>
                       prev.map(s => (s.id === updated.id ? updated : s))
                     )
                   }}
-                  style={{ marginLeft: "4px", width: "80px" }}
+                  style={{
+                    marginLeft: "4px",
+                    width: "80px",
+                    textAlign: "right"   // ←これだけ
+                  }}
                 />
                 円
               </label>
             </div>
 
             {/* 食事代 */}
-            <div style={{ marginTop: "8px" }}>
-              <strong>食事代</strong>
-              <div>
+            <div style={{ marginTop: "24px" }}>
+              <strong>
+                食事代
+              </strong>
+
+              <div style={{ marginTop: "6px" }}>
                 {players.map(player => (
-                  <label key={player} style={{ marginRight: "12px" }}>
-                    {player}：
-                    <input
-                      type="number"
-                      value={currentSession.settlement.foodFee[player]}
-                      onChange={e => {
-                        const updated = {
-                          ...currentSession,
-                          settlement: {
-                            ...currentSession.settlement,
-                            foodFee: {
-                              ...currentSession.settlement.foodFee,
-                              [player]: Number(e.target.value),
+                  <div key={player} style={{ marginBottom: "4px" }}>
+                    <label>
+                      <span style={labelStyle}>
+                        {player}：
+                      </span>
+
+                      <input
+                        type="number"
+                        value={currentSession.settlement.foodFee[player]}
+                        onChange={e => {
+                          const v = e.target.value
+
+                          const updated = {
+                            ...currentSession,
+                            settlement: {
+                              ...currentSession.settlement,
+                              foodFee: {
+                                ...currentSession.settlement.foodFee,
+                                [player]: v === "" ? 0 : Number(v),
+                              },
                             },
-                          },
-                        }
-                        setCurrentSession(updated)
-                        setSessions(prev =>
-                          prev.map(s => (s.id === updated.id ? updated : s))
-                        )
-                      }}
-                      style={{ marginLeft: "4px", width: "60px" }}
-                    />
-                    円
-                  </label>
+                          }
+
+                          setCurrentSession(updated)
+                          setSessions(prev =>
+                            prev.map(s => (s.id === updated.id ? updated : s))
+                          )
+                        }}
+                        style={{
+                          marginLeft: "6px",
+                          width: "80px",
+                          textAlign: "right"
+                        }}
+                      />
+                      円
+                    </label>
+                  </div>
                 ))}
               </div>
             </div>
