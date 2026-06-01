@@ -1913,7 +1913,7 @@ function App() {
                 <span
                   style={{
                     display: "inline-block",
-                    width: "10px",
+                    width: "12px",
                     textAlign: "center"
                   }}
                 >
@@ -1950,7 +1950,7 @@ function App() {
                 <span style={labelStyle}>
                   場代：
                 </span>
-                <span style={{ display: "inline-block", width: "10px", textAlign: "center" }}>
+                <span style={{ display: "inline-block", width: "12px", textAlign: "center" }}>
                 </span>
                 <input
                   type="number"
@@ -1994,7 +1994,7 @@ function App() {
                       <span style={labelStyle}>
                         {player}：
                       </span>
-                      <span style={{ display: "inline-block", width: "10px", textAlign: "center" }}>
+                      <span style={{ display: "inline-block", width: "12px", textAlign: "center" }}>
                       </span>
 
                       <input
