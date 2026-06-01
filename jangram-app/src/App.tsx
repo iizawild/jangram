@@ -652,7 +652,7 @@ function ScoreTable({
               fontWeight: "bold",
             }}
           >
-            合計
+            計
           </td>
 
           {players.map(player => {
@@ -710,7 +710,7 @@ function ScoreTable({
               fontWeight: "bold",
             }}
           >
-            祝儀
+            祝
           </td>
 
           {players.map(player => {
@@ -742,7 +742,7 @@ function ScoreTable({
               fontWeight: "bold",
             }}
           >
-            総合計
+            総
           </td>
 
           {players.map(player => {
