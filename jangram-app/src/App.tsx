@@ -634,7 +634,7 @@ function ScoreTable({
 
                 {/* 修正中 */}
                 {mode === "edit" && activeRoundIndex === index && (
-                  <span style={{ color: "#b58900" }}>修正中</span>
+                  <span style={{ color: "#b58900" }}>✎</span>
                 )}
 
               </td>
