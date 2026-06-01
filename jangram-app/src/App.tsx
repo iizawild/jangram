@@ -627,7 +627,7 @@ function ScoreTable({
                         loadRoundToUI(round)
                       }}
                     >
-                      修正
+                      ✎
                     </button>
                   </>
                 )}
