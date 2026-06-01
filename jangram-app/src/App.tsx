@@ -1910,6 +1910,14 @@ function App() {
                 <span style={labelStyle}>
                   レート（1ptあたり）：
                 </span>
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: "10px",
+                    textAlign: "center"
+                  }}
+                >
+                </span>
                 <input
                   type="number"
                   value={currentSession.settlement.rateYenPerPt}
@@ -1941,6 +1949,8 @@ function App() {
               <label>
                 <span style={labelStyle}>
                   場代：
+                </span>
+                <span style={{ display: "inline-block", width: "10px", textAlign: "center" }}>
                 </span>
                 <input
                   type="number"
@@ -1983,6 +1993,8 @@ function App() {
                     <label>
                       <span style={labelStyle}>
                         {player}：
+                      </span>
+                      <span style={{ display: "inline-block", width: "10px", textAlign: "center" }}>
                       </span>
 
                       <input
