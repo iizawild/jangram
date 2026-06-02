@@ -858,7 +858,8 @@ function InputSection({
                 }}
                 style={{
                   width: "100%",
-                  boxSizing: "border-box"
+                  boxSizing: "border-box",
+                  textAlign: "right"
                 }}
               />
             </td>
@@ -1568,7 +1569,7 @@ function App() {
 
             {session.title}
             （{new Date(session.date).toLocaleDateString()}
-            {session.location ? ` / ${session.location}` : ""}）
+            {session.location ? ` in ${session.location}` : ""}）
 
             <button
               onClick={() => {
