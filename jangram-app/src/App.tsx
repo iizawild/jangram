@@ -1,20 +1,28 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 
 /* ========= 型定義 ========= */
+type Player = {
+  id: string
+  name: string
+}
 
-type Player = "A" | "B" | "C" | "D"
-const PLAYERS: Player[] = ["A", "B", "C", "D"]
+const PLAYERS: Player[] = [
+  { id: "A", name: "A" },
+  { id: "B", name: "B" },
+  { id: "C", name: "C" },
+  { id: "D", name: "D" }
+]
 
 type Mode = "idle" | "edit"
 
 type Settlement = {
   rateYenPerPt: number        // 1ptあたりの円
   tableFee: number            // 場代（合計）
-  foodFee: Record<Player, number> // 食事代（個別）
+  foodFee: Record<string, number> // 食事代（個別）
 }
 
 type Round = {
-  scores: Record<Player, ScoreState>
+  scores: Record<string, ScoreState>
 
   events?: {
     tobashi?: {
@@ -32,7 +40,7 @@ type Round = {
       discarder?: Player  //放銃者
       responsibility?: Player //責任払い対象
       memo?: string       //メモ
-      directPoints?: Record<Player, number>   //手動入力時のポイント
+      directPoints?: Record<string, number>   //手動入力時のポイント
     }[]
 
   }
@@ -43,6 +51,7 @@ type Session = {
   title: string
   date: string
   location?: string
+  players: Player[]
   rounds: Round[]
   settlement: Settlement
 }
@@ -100,10 +109,10 @@ const YAKUMAN_TYPES: YakumanType[] = [
 /* ========= ルール設定 ========= */
 
 /* 飛ばし祝儀計算 */
-function calcBonusPoints(rounds: Round[]): Record<Player, number> {
+function calcBonusPoints(rounds: Round[]): Record<string, number> {
   const result = Object.fromEntries(
-    PLAYERS.map(p => [p, 0])
-  ) as Record<Player, number>
+    PLAYERS.map(p => [p.id, 0])
+  ) as Record<string, number>
 
   rounds.forEach(round => {
 
@@ -111,8 +120,8 @@ function calcBonusPoints(rounds: Round[]): Record<Player, number> {
     if (round.events?.tobashi) {
       round.events.tobashi.forEach(t => {
         t.targets.forEach(target => {
-          result[t.by] += TOBASHI_POINT
-          result[target] -= TOBASHI_POINT
+          result[t.by.id] += TOBASHI_POINT
+          result[target.id] -= TOBASHI_POINT
         })
       })
     }
@@ -125,23 +134,23 @@ function calcBonusPoints(rounds: Round[]): Record<Player, number> {
         // ===== directAdjust（＝祝儀ポイント直接入力） =====
         if (y.directPoints !== undefined) {
           PLAYERS.forEach(p => {
-            result[p] += Number(y.directPoints?.[p] ?? 0)
+            result[p.id] += Number(y.directPoints?.[p.id] ?? 0)
           })
           return
         }
 
         // ===== 責任払い =====
         if (y.responsibility !== undefined) {
-          result[y.winner] += total
-          result[y.responsibility] -= total
+          result[y.winner.id] += total
+          result[y.responsibility.id] -= total
           return
         }
 
         if (y.type === "ron") {
           // ===== ロン =====
           if (y.discarder) {
-            result[y.winner] += total
-            result[y.discarder] -= total
+            result[y.winner.id] += total
+            result[y.discarder.id] -= total
           }
 
         } else if (y.type === "tsumo") {
@@ -149,29 +158,29 @@ function calcBonusPoints(rounds: Round[]): Record<Player, number> {
           if (y.role === "parent") {
             // ===== 親ツモ =====
             const others = PLAYERS
-              .filter(p => p !== y.winner)
+              .filter(p => p.id !== y.winner.id)
 
             const share = total / 3
 
-            result[y.winner] += total
+            result[y.winner.id] += total
 
             others.forEach(p => {
-              result[p] -= share
+              result[p.id] -= share
             })
 
           } else {
             // ===== 子ツモ =====
 
             const others = PLAYERS
-              .filter(p => p !== y.winner)
+              .filter(p => p.id !== y.winner.id)
 
             // 和了者のプラス
-            result[y.winner] += total
+            result[y.winner.id] += total
 
             if (!USE_PARENT_EXTRA) {
               // ===== 全員均等 =====
               others.forEach(p => {
-                result[p] -= YAKUMAN_TSUMO_CHILD_ALL * y.count
+                result[p.id] -= YAKUMAN_TSUMO_CHILD_ALL * y.count
               })
 
             } else {
@@ -180,18 +189,18 @@ function calcBonusPoints(rounds: Round[]): Record<Player, number> {
               if (!y.dealer) {
                 const share = total / 3
                 others.forEach(p => {
-                  result[p] -= share
+                  result[p.id] -= share
                 })
                 return
               }
 
               others.forEach(p => {
-                if (p === y.dealer) {
+                if (p.id === y.dealer?.id) {
                   // 親
-                  result[p] -= YAKUMAN_TSUMO_CHILD_PARENT * y.count
+                  result[p.id] -= YAKUMAN_TSUMO_CHILD_PARENT * y.count
                 } else {
                   // 子
-                  result[p] -= YAKUMAN_TSUMO_CHILD_CHILD * y.count
+                  result[p.id] -= YAKUMAN_TSUMO_CHILD_CHILD * y.count
                 }
               })
             }
@@ -225,33 +234,33 @@ function roundScore(score: number): number {
 /* ========= 正規化（自動計算） ========= */
 
 function normalizeScores(
-  scores: Record<Player, ScoreState>
-): Record<Player, ScoreState> {
+  scores: Record<string, ScoreState>
+): Record<string, ScoreState> {
 
-  const entries = Object.entries(scores).map(([player, s]) => ({
-    player: player as Player,
+  const entries = Object.entries(scores).map(([playerId, s]) => ({
+    playerId,
     ...s,
   }))
 
   const filled = entries.filter(e => e.value !== "")
   const empty = entries.filter(e => e.value === "")
 
-  // ★ 3人確定・1人未入力の「確定後」だけ自動計算
   if (filled.length === 3 && empty.length === 1) {
     const total = STARTING_POINTS * PLAYER_COUNT
+
     const sumFilled = filled.reduce(
       (sum, e) => sum + Number(e.value),
       0
     )
 
     const autoScore = total - sumFilled
-    const target = empty[0].player
+    const targetId = empty[0].playerId
 
     return {
       ...scores,
-      [target]: {
+      [targetId]: {
         value: autoScore,
-        updatedAt: Date.now(), // 最後に確定した扱い
+        updatedAt: Date.now(),
       },
     }
   }
@@ -260,16 +269,15 @@ function normalizeScores(
 }
 
 /* ========= 麻雀計算本体 ========= */
-
 function recalcRound(
-  scores: Record<Player, ScoreState>
+  scores: Record<string, ScoreState>
 ): RoundResult[] {
 
   // 素点確定済みのみ対象
   const entries = Object.entries(scores)
     .filter(([, s]) => s.value !== "")
-    .map(([player, s]) => ({
-      player: player as Player,
+    .map(([playerId, s]) => ({
+      player: PLAYERS.find(p => p.id === playerId)!,
       rawScore: s.value as number,
       updatedAt: s.updatedAt as number,
     }))
@@ -329,20 +337,20 @@ function calcSettlement4p(
   settlement: Settlement
 ) {
   const totalPt = Object.fromEntries(
-    PLAYERS.map(p => [p, 0])
-  ) as Record<Player, number>
+    PLAYERS.map(p => [p.id, 0])
+  ) as Record<string, number>
 
   // ✅ 参加回数カウント
   const playCount = Object.fromEntries(
-    PLAYERS.map(p => [p, 0])
-  ) as Record<Player, number>
+    PLAYERS.map(p => [p.id, 0])
+  ) as Record<string, number>
 
   rounds.forEach(round => {
     const results = recalcRound(round.scores)
 
     results.forEach(r => {
-      totalPt[r.player] += r.point
-      playCount[r.player] += 1   // ←参加カウント
+      totalPt[r.player.id] += r.point
+      playCount[r.player.id] += 1   // ←参加カウント
     })
   })
 
@@ -358,13 +366,13 @@ function calcSettlement4p(
   const bonusPt = calcBonusPoints(rounds)
 
   return PLAYERS.map(player => {
-    const total = totalPt[player] + bonusPt[player]
+    const total = totalPt[player.id] + bonusPt[player.id]
     const yen = total * rate
 
-    const food = settlement.foodFee[player] ?? 0
+    const food = settlement.foodFee[player.id] ?? 0
 
     // ✅ 個別場代（ここが変更点）
-    const table = feePerPlay * playCount[player]
+    const table = feePerPlay * playCount[player.id]
 
     const final = yen - table - food
 
@@ -432,7 +440,7 @@ type ScoreTableProps = {
 
   allResults: RoundResult[][]
 
-  bonusPt: Record<Player, number>
+  bonusPt: Record<string, number>
 }
 
 function ScoreTable({
@@ -465,17 +473,17 @@ function ScoreTable({
           </th>
           {players.flatMap(player => ([
             <th
-              key={`${player}-score`}
+              key={`${player.id}-score`}
               style={{
                 border: "1px solid #ccc",
                 padding: "2px",
                 width: "60px"
               }}
             >
-              {player}
+              {player.name}
             </th>,
             <th
-              key={`${player}-mark`}
+              key={`${player.id}-mark`}
               style={{
                 border: "1px solid #ccc",
                 padding: "2px",
@@ -499,7 +507,7 @@ function ScoreTable({
         {rounds.map((round, index) => {
           const results = allResults[index] ?? []
 
-          const resultMap = Object.fromEntries(results.map(r => [r.player, r]))
+          const resultMap = Object.fromEntries(results.map(r => [r.player.id, r]))
 
           return (
             <tr
@@ -524,14 +532,14 @@ function ScoreTable({
               </td>
 
               {players.map(player => {
-                const r = resultMap[player]
+                const r = resultMap[player.id]
                 const point = r ? r.point : 0
 
                 return [
 
                   // ✅ 数字セル
                   <td
-                    key={`${player}-score`}
+                    key={`${player.id}-score`}
                     style={{
                       border: "1px solid #ccc",
                       padding: "2px",
@@ -545,7 +553,7 @@ function ScoreTable({
 
                   // ✅ マークセル（複数OK）
                   <td
-                    key={`${player}-mark`}
+                    key={`${player.id}-mark`}
                     style={{
                       border: "1px solid #ccc",
                       padding: "2px",
@@ -554,10 +562,10 @@ function ScoreTable({
                     }}
                   >
                     {round.events?.tobashi?.map((t, i) => {
-                      if (t.by === player)
-                        return <Mark key={`t-${player}-plus-${index}-${i}`} label="飛" value={1} />
-                      if (t.targets.includes(player))
-                        return <Mark key={`t-${player}-minus-${index}-${i}`} label="飛" value={-1} />
+                      if (t.by.id === player.id)
+                        return <Mark key={`t-${player.id}-plus-${index}-${i}`} label="飛" value={1} />
+                      if (t.targets.some(x => x.id === player.id))
+                        return <Mark key={`t-${player.id}-minus-${index}-${i}`} label="飛" value={-1} />
                       return null
                     })}
 
@@ -565,33 +573,33 @@ function ScoreTable({
 
                       // ===== directPoints（手動入力） =====
                       if (y.directPoints !== undefined) {
-                        const val = y.directPoints[player] ?? 0
+                        const val = y.directPoints[player.id] ?? 0
                         if (val > 0)
-                          return <Mark key={`y-${player}-plus-${index}-${i}`} label="役" value={1} />
+                          return <Mark key={`y-${player.id}-plus-${index}-${i}`} label="役" value={1} />
                         if (val < 0)
-                          return <Mark key={`y-${player}-minus-${index}-${i}`} label="役" value={-1} />
+                          return <Mark key={`y-${player.id}-minus-${index}-${i}`} label="役" value={-1} />
                         return null
                       }
 
                       // ===== 勝者 =====
-                      if (y.winner === player)
-                        return <Mark key={`y-${player}-win-${index}-${i}`} label="役" value={1} />
+                      if (y.winner.id === player.id)
+                        return <Mark key={`y-${player.id}-win-${index}-${i}`} label="役" value={1} />
 
                       // ===== ロン（放銃） =====
                       if (y.type === "ron") {
-                        if (y.discarder === player)
-                          return <Mark key={`y-${player}-lose-${index}-${i}`} label="役" value={-1} />
+                        if (y.discarder?.id === player.id)
+                          return <Mark key={`y-${player.id}-lose-${index}-${i}`} label="役" value={-1} />
                         return null
                       }
 
                       // ===== 責任払い =====
-                      if (y.responsibility === player)
-                        return <Mark key={`y-${player}-resp-${index}-${i}`} label="役" value={-1} />
+                      if (y.responsibility?.id === player.id)
+                        return <Mark key={`y-${player.id}-resp-${index}-${i}`} label="役" value={-1} />
 
                       // ===== ツモ（ここが今回の修正ポイント） =====
                       if (y.type === "tsumo") {
-                        if (player !== y.winner) {
-                          return <Mark key={`y-${player}-tsumo-${index}-${i}`} label="役" value={-1} />
+                        if (player.id !== y.winner.id) {
+                          return <Mark key={`y-${player.id}-tsumo-${index}-${i}`} label="役" value={-1} />
                         }
                       }
 
@@ -658,15 +666,15 @@ function ScoreTable({
           {players.map(player => {
 
             const totalPoint = allResults.reduce((sum, results) => {
-              const map = Object.fromEntries(results.map(r => [r.player, r]))
-              const r = map[player]
+              const map = Object.fromEntries(results.map(r => [r.player.id, r]))
+              const r = map[player.id]
               return sum + (r ? r.point : 0)
             }, 0)
 
             return [
               // 数字セル
               <td
-                key={`${player}-score`}
+                key={`${player.id}-score`}
                 style={{
                   border: "1px solid #ccc",
                   borderTop: "2px solid #666",
@@ -681,7 +689,7 @@ function ScoreTable({
 
               // 順位セル（あとで使う）
               <td
-                key={`${player}-rank`}
+                key={`${player.id}-rank`}
                 style={{
                   border: "1px solid #ccc",
                   borderTop: "2px solid #666",
@@ -716,17 +724,17 @@ function ScoreTable({
           {players.map(player => {
             return [
               <td
-                key={`${player}-bonus`}
+                key={`${player.id}-bonus`}
                 style={{
                   border: "1px solid #ccc",
                   padding: "2px",
                   textAlign: "right",
-                  color: bonusPt[player] < 0 ? "red" : "green",
+                  color: bonusPt[player.id] < 0 ? "red" : "green",
                 }}
               >
-                {bonusPt[player].toFixed(1)}
+                {bonusPt[player.id].toFixed(1)}
               </td>,
-              <td key={`${player}-bonus-empty`} style={{ border: "1px solid #ccc" }} />
+              <td key={`${player.id}-bonus-empty`} style={{ border: "1px solid #ccc" }} />
             ]
           })}
 
@@ -748,16 +756,16 @@ function ScoreTable({
           {players.map(player => {
 
             const totalPoint = allResults.reduce((sum, results) => {
-              const map = Object.fromEntries(results.map(r => [r.player, r]))
-              const r = map[player]
+              const map = Object.fromEntries(results.map(r => [r.player.id, r]))
+              const r = map[player.id]
               return sum + (r ? r.point : 0)
             }, 0)
 
-            const total = totalPoint + bonusPt[player]
+            const total = totalPoint + bonusPt[player.id]
 
             return [
               <td
-                key={`${player}-total`}
+                key={`${player.id}-total`}
                 style={{
                   border: "1px solid #ccc",
                   padding: "2px",
@@ -768,7 +776,7 @@ function ScoreTable({
               >
                 {total.toFixed(1)}
               </td>,
-              <td key={`${player}-total-empty`} style={{ border: "1px solid #ccc" }} />
+              <td key={`${player.id}-total-empty`} style={{ border: "1px solid #ccc" }} />
             ]
           })}
 
@@ -784,16 +792,16 @@ function ScoreTable({
 type InputSectionProps = {
   players: Player[]
 
-  inputScores: Record<Player, ScoreState>
+  inputScores: Record<string, ScoreState>
   setInputScores: React.Dispatch<
-    React.SetStateAction<Record<Player, ScoreState>>
+    React.SetStateAction<Record<string, ScoreState>>
   >
 
   firstInputRef: React.RefObject<HTMLInputElement | null>
 
   normalizeScores: (
-    scores: Record<Player, ScoreState>
-  ) => Record<Player, ScoreState>
+    scores: Record<string, ScoreState>
+  ) => Record<string, ScoreState>
 }
 
 function InputSection({
@@ -833,21 +841,21 @@ function InputSection({
           {/* 各プレイヤー入力欄 */}
           {players.map(player => (
             <td
-              key={player}
+              key={player.id}
               style={{
                 border: "1px solid #ccc",
                 padding: "2px",
               }}
             >
               <input
-                ref={player === players[0] ? firstInputRef : null}
+                ref={player.id === players[0].id ? firstInputRef : null}
                 type="number"
-                value={inputScores[player].value}
+                value={inputScores[player.id].value}
                 onChange={e => {
                   const raw = e.target.value
                   setInputScores(prev => ({
                     ...prev,
-                    [player]: {
+                    [player.id]: {
                       value: raw === "" ? "" : Number(raw),
                       updatedAt: raw === "" ? null : Date.now(),
                     },
@@ -910,9 +918,9 @@ type BonusSectionProps = {
   yakumanMemo: string
   setYakumanMemo: React.Dispatch<React.SetStateAction<string>>
 
-  yakumanAdjustMap: Record<Player, number | "">
+  yakumanAdjustMap: Record<string, number | "">
   setYakumanAdjustMap: React.Dispatch<
-    React.SetStateAction<Record<Player, number | "">>
+    React.SetStateAction<Record<string, number | "">>
   >
 
   selectedYakumanType: YakumanType | null
@@ -967,14 +975,14 @@ function BonusSection({
           <div style={{ marginBottom: "8px" }}>
             飛ばした人：
             <select
-              value={tobashiBy}
-              onChange={e => setTobashiBy(e.target.value as Player)}
+              value={tobashiBy ? tobashiBy.id : ""}
+              onChange={e => setTobashiBy(players.find(p => p.id === e.target.value) ?? "")}
               style={{ marginLeft: "8px" }}
             >
               <option value="">選択</option>
               {players.map(p => (
-                <option key={p} value={p}>
-                  {p}
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
               ))}
             </select>
@@ -984,19 +992,21 @@ function BonusSection({
           <div>
             飛ばされた人：
             {players.map(p => (
-              <label key={p} style={{ marginLeft: "8px" }}>
+              <label key={p.id} style={{ marginLeft: "8px" }}>
                 <input
                   type="checkbox"
-                  checked={tobashiTargets.includes(p)}
+                  checked={tobashiTargets.some(x => x.id === p.id)}
                   onChange={e => {
                     if (e.target.checked) {
                       setTobashiTargets(prev => [...prev, p])
                     } else {
-                      setTobashiTargets(prev => prev.filter(x => x !== p))
+                      setTobashiTargets(prev =>
+                        prev.filter(x => x.id !== p.id)
+                      )
                     }
                   }}
                 />
-                {p}
+                {p.name}
               </label>
             ))}
           </div>
@@ -1017,17 +1027,18 @@ function BonusSection({
           <div style={{ marginBottom: "8px" }}>
             和了者：
             <select
-              value={yakumanWinner ?? ""}
+              value={yakumanWinner ? yakumanWinner.id : ""}
               onChange={e => {
-                const value = e.target.value as Player | ""
+                const value = e.target.value
 
                 if (value === "") {
                   // 和了者を外した = 役満祝儀を使わない
                   setYakumanWinner(null)
                   setYakumanTypeKey(null)
                 } else {
+                  const player = players.find(p => p.id === value) ?? null
                   // 和了者を選んだ = 役満祝儀が発生
-                  setYakumanWinner(value)
+                  setYakumanWinner(player)
                   setYakumanTypeKey("yakuman") // ★ここで初めてデフォルトを入れる
                 }
               }}
@@ -1035,8 +1046,8 @@ function BonusSection({
             >
               <option value="">選択</option>
               {players.map(p => (
-                <option key={p} value={p}>
-                  {p}
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
               ))}
             </select>
@@ -1109,16 +1120,16 @@ function BonusSection({
               <div style={{ marginBottom: "8px" }}>
                 その時の親：
                 <select
-                  value={yakumanDealer ?? ""}
+                  value={yakumanDealer ? yakumanDealer.id : ""}
                   onChange={e =>
-                    setYakumanDealer(e.target.value as Player)
+                    setYakumanDealer(players.find(p => p.id === e.target.value) ?? "")
                   }
                   style={{ marginLeft: "8px" }}
                 >
                   <option value="">選択</option>
                   {players.map(p => (
-                    <option key={p} value={p}>
-                      {p}
+                    <option key={p.id} value={p.id}>
+                      {p.name}
                     </option>
                   ))}
                 </select>
@@ -1130,14 +1141,14 @@ function BonusSection({
             <div style={{ marginBottom: "8px" }}>
               放銃者：
               <select
-                value={yakumanDiscarder}
-                onChange={e => setYakumanDiscarder(e.target.value as Player)}
+                value={yakumanDiscarder ? yakumanDiscarder.id : ""}
+                onChange={e => setYakumanDiscarder(players.find(p => p.id === e.target.value) ?? "")}
                 style={{ marginLeft: "8px" }}
               >
                 <option value="">選択</option>
                 {players.map(p => (
-                  <option key={p} value={p}>
-                    {p}
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>
@@ -1149,14 +1160,14 @@ function BonusSection({
             <div style={{ marginBottom: "8px" }}>
               責任払い対象：
               <select
-                value={yakumanResponsibility}
-                onChange={e => setYakumanResponsibility(e.target.value as Player)}
+                value={yakumanResponsibility ? yakumanResponsibility.id : ""}
+                onChange={e => setYakumanResponsibility(players.find(p => p.id === e.target.value) ?? "")}
                 style={{ marginLeft: "8px" }}
               >
                 <option value="">なし</option>
                 {players.map(p => (
-                  <option key={p} value={p}>
-                    {p}
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>
@@ -1183,15 +1194,15 @@ function BonusSection({
               <div style={{ marginBottom: "8px" }}>
                 祝儀ポイント（直接入力）：
                 {players.map(p => (
-                  <div key={p}>
-                    {p}：
+                  <div key={p.id}>
+                    {p.name}：
                     <input
                       type="number"
-                      value={yakumanAdjustMap[p]}
+                      value={yakumanAdjustMap[p.id]}
                       onChange={e =>
                         setYakumanAdjustMap(prev => ({
                           ...prev,
-                          [p]: e.target.value === "" ? "" : Number(e.target.value),
+                          [p.id]: e.target.value === "" ? "" : Number(e.target.value),
                         }))
                       }
                       style={{ marginLeft: "8px", width: "80px" }}
@@ -1226,11 +1237,8 @@ function App() {
 
   /* ========= 画面操作用の状態（初期データ） ========= */
   const emptyScores = Object.fromEntries(
-    PLAYERS.map(p => [
-      p,
-      { value: "", updatedAt: null }
-    ])
-  ) as Record<Player, ScoreState>
+    PLAYERS.map(p => [p.id, { value: "", updatedAt: null }])
+  ) as Record<string, ScoreState>
 
   /* ========= 画面操作用の状態 ========= */
   const [mode, setMode] = useState<Mode>("idle")
@@ -1252,12 +1260,12 @@ function App() {
 
   function createEmptyAdjustMap() {
     return Object.fromEntries(
-      PLAYERS.map(p => [p, ""])
-    ) as Record<Player, number | "">
+      PLAYERS.map(p => [p.id, ""])
+    ) as Record<string, number | "">
   }
 
   const [yakumanAdjustMap, setYakumanAdjustMap] =
-    useState<Record<Player, number | "">>(createEmptyAdjustMap())
+    useState<Record<string, number | "">>(createEmptyAdjustMap())
 
   /* ========= 画面操作用の状態（補助） ========= */
   // Sessionタイトル編集用
@@ -1266,7 +1274,7 @@ function App() {
 
   // 入力欄に表示するスコア（新規 / 修正 / 削除確認 共通）
   const [inputScores, setInputScores] =
-    useState<Record<Player, ScoreState>>(emptyScores)
+    useState<Record<string, ScoreState>>(emptyScores)
 
   const firstInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -1297,15 +1305,43 @@ function App() {
   // ✅ 起動時復元
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
+
     if (stored) {
       try {
         const parsed: Session[] = JSON.parse(stored)
-        setSessions(parsed)
+
+        function revivePlayer(p: Player): Player {
+          return PLAYERS.find(x => x.id === p.id) ?? p
+        }
+
+        const revived = parsed.map(session => ({
+          ...session,
+          rounds: session.rounds.map(round => ({
+            ...round,
+            events: round.events && {
+              tobashi: round.events.tobashi?.map(t => ({
+                by: revivePlayer(t.by),
+                targets: t.targets.map(revivePlayer)
+              })),
+              yakuman: round.events.yakuman?.map(y => ({
+                ...y,
+                winner: revivePlayer(y.winner),
+                dealer: y.dealer ? revivePlayer(y.dealer) : undefined,
+                discarder: y.discarder ? revivePlayer(y.discarder) : undefined,
+                responsibility: y.responsibility ? revivePlayer(y.responsibility) : undefined,
+              }))
+            }
+          }))
+        }))
+
+        setSessions(revived)
+
       } catch (e) {
         console.error("localStorage の読み込みに失敗", e)
       }
     }
-    setHasLoaded(true) // ✅ 復元完了フラグ
+
+    setHasLoaded(true)
   }, [])
 
   // ✅ 自動保存
@@ -1319,8 +1355,8 @@ function App() {
   const bonusPt = useMemo(() => {
     if (!currentSession) {
       return Object.fromEntries(
-        PLAYERS.map(p => [p, 0])
-      ) as Record<Player, number>
+        PLAYERS.map(p => [p.id, 0])
+      ) as Record<string, number>
     }
 
     return calcBonusPoints(currentSession.rounds)
@@ -1375,9 +1411,9 @@ function App() {
     setYakumanAdjustMap(createEmptyAdjustMap())
   }
 
-  function validateDirectPoints(map: Record<Player, number | "">): string | null {
+  function validateDirectPoints(map: Record<string, number | "">): string | null {
     const values = PLAYERS.map(p =>
-      Number(map[p] || 0)
+      Number(map[p.id] || 0)
     )
 
     const sum = values.reduce((a, b) => a + b, 0)
@@ -1446,8 +1482,8 @@ function App() {
           directPoints:
             selected.directAdjust === 1
               ? Object.fromEntries(
-                PLAYERS.map(p => [p, Number(yakumanAdjustMap[p] || 0)])
-              ) as Record<Player, number>
+                PLAYERS.map(p => [p.id, Number(yakumanAdjustMap[p.id] || 0)])
+              ) as Record<string, number>
               : undefined
         }]
       }
@@ -1488,10 +1524,10 @@ function App() {
         setYakumanAdjustMap(
           Object.fromEntries(
             PLAYERS.map(p => [
-              p,
-              y.directPoints?.[p] ?? ""
+              p.id,
+              y.directPoints?.[p.id] ?? ""
             ])
-          ) as Record<Player, number | "">
+          ) as Record<string, number | "">
         )
       } else {
         setYakumanAdjustMap(createEmptyAdjustMap())
@@ -1514,16 +1550,15 @@ function App() {
             title: "新しい対局",
             date: new Date().toISOString(),
             location: "",
+            players: PLAYERS.slice(0, 4), // 仮で先頭4人
             rounds: [],
             settlement: {
               rateYenPerPt: 50, // デフォルト50円/pt
               tableFee: 0,
-              foodFee: {
-                A: 0,
-                B: 0,
-                C: 0,
-                D: 0,
-              },
+              foodFee: Object.fromEntries(
+                PLAYERS.map(p => [p.id, 0])
+              )
+              ,
             },
           }
 
@@ -1992,10 +2027,10 @@ function App() {
 
               <div style={{ marginTop: "6px" }}>
                 {players.map(player => (
-                  <div key={player} style={{ marginBottom: "4px" }}>
+                  <div key={player.id} style={{ marginBottom: "4px" }}>
                     <label>
                       <span style={labelStyle}>
-                        {player}
+                        {player.name}
                       </span>
                       <span style={{ display: "inline-block", width: "12px", textAlign: "center" }}>
                         ：
@@ -2003,7 +2038,7 @@ function App() {
 
                       <input
                         type="number"
-                        value={currentSession.settlement.foodFee[player]}
+                        value={currentSession.settlement.foodFee[player.id]}
                         onChange={e => {
                           const v = e.target.value
 
@@ -2013,7 +2048,7 @@ function App() {
                               ...currentSession.settlement,
                               foodFee: {
                                 ...currentSession.settlement.foodFee,
-                                [player]: v === "" ? 0 : Number(v),
+                                [player.id]: v === "" ? 0 : Number(v),
                               },
                             },
                           }
@@ -2098,7 +2133,7 @@ function App() {
 
                 return (
                   <tr
-                    key={r.player}
+                    key={r.player.id}
                     style={{
                       borderBottom: "1px solid #ccc",
                     }}
@@ -2114,7 +2149,7 @@ function App() {
                         fontWeight: "bold"
                       }}
                     >
-                      {r.player}
+                      {r.player.name}
                     </td>
 
                     {/* 合計pt */}
