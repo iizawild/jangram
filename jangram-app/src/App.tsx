@@ -1367,24 +1367,24 @@ function App() {
     return <div style={{ padding: "16px" }}>Loading...</div>
   }
 
-  /* ========= 処理関数 ========= */
   function deleteRound() {
     if (activeRoundIndex === null) return
 
-    setCurrentSession(prev => {
-      if (!prev) return prev
+    const prev = currentSession
+    if (!prev) return
 
-      const updated = {
-        ...prev,
-        rounds: prev.rounds.filter((_, i) => i !== activeRoundIndex),
-      }
+    const updated = {
+      ...prev,
+      rounds: prev.rounds.filter((_, i) => i !== activeRoundIndex),
+    }
 
-      setSessions(sessions =>
-        sessions.map(s => (s.id === updated.id ? updated : s))
-      )
+    // ✅ sessions 更新（先）
+    setSessions(s =>
+      s.map(x => x.id === updated.id ? updated : x)
+    )
 
-      return updated
-    })
+    // ✅ currentSession 更新（後）
+    setCurrentSession(updated)
 
     // 状態リセット
     setMode("idle")
@@ -1841,25 +1841,26 @@ function App() {
                   const hasEvents =
                     !!(events?.tobashi?.length || events?.yakuman?.length)
 
-                  setCurrentSession(prev => {
-                    if (!prev) return prev
+                  const prev = currentSession
+                  if (!prev) return
 
-                    const round =
-                      hasEvents
-                        ? { scores: normalized, events }
-                        : { scores: normalized }
+                  const round =
+                    hasEvents
+                      ? { scores: normalized, events }
+                      : { scores: normalized }
 
-                    const updated = {
-                      ...prev,
-                      rounds: [...prev.rounds, round],
-                    }
+                  const updated = {
+                    ...prev,
+                    rounds: [...prev.rounds, round],
+                  }
 
-                    setSessions(s =>
-                      s.map(x => x.id === updated.id ? updated : x)
-                    )
+                  // ✅ 先に sessions 更新
+                  setSessions(s =>
+                    s.map(x => x.id === updated.id ? updated : x)
+                  )
 
-                    return updated
-                  })
+                  // ✅ 次に currentSession 更新
+                  setCurrentSession(updated)
 
                   setInputScores(emptyScores)
                   resetYakumanState()
@@ -1875,34 +1876,34 @@ function App() {
                   const hasEvents =
                     !!(events?.tobashi?.length || events?.yakuman?.length)
 
-                  setCurrentSession(prev => {
-                    if (!prev) return prev
+                  const prev = currentSession
+                  if (!prev) return
 
-                    const round =
-                      hasEvents
-                        ? { scores: normalized, events }
-                        : { scores: normalized }
+                  const round =
+                    hasEvents
+                      ? { scores: normalized, events }
+                      : { scores: normalized }
 
-                    const updated = {
-                      ...prev,
-                      rounds: prev.rounds.map((r, i) =>
-                        i === activeRoundIndex ? round : r
-                      ),
-                    }
+                  const updated = {
+                    ...prev,
+                    rounds: prev.rounds.map((r, i) =>
+                      i === activeRoundIndex ? round : r
+                    ),
+                  }
 
-                    setSessions(s =>
-                      s.map(x => x.id === updated.id ? updated : x)
-                    )
+                  // ✅ 先に sessions 更新
+                  setSessions(s =>
+                    s.map(x => x.id === updated.id ? updated : x)
+                  )
 
-                    return updated
-                  })
+                  // ✅ 次に currentSession 更新
+                  setCurrentSession(updated)
 
                   setMode("idle")
                   setActiveRoundIndex(null)
                   setInputScores(emptyScores)
                   resetYakumanState()
                 }
-
               }}
               style={{
                 padding: "6px 10px",
