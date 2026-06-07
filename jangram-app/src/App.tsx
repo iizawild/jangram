@@ -13,6 +13,13 @@ const PLAYERS: Player[] = [
   { id: "D", name: "D" }
 ]
 
+type PlayerMaster = {
+  id: string
+  name: string
+  shortName: string
+  groupId: string
+}
+
 type Mode = "idle" | "edit"
 
 type Settlement = {
@@ -1218,6 +1225,127 @@ function BonusSection({
   )
 }
 
+
+function PlayerMasterSection({
+  playerMaster,
+  setPlayerMaster,
+  newPlayerName,
+  setNewPlayerName,
+  newPlayerShort,
+  setNewPlayerShort,
+  newPlayerGroupId,
+  setNewPlayerGroupId,
+  showPlayerMaster,
+  setShowPlayerMaster
+}: {
+  playerMaster: PlayerMaster[]
+  setPlayerMaster: React.Dispatch<React.SetStateAction<PlayerMaster[]>>
+  newPlayerName: string
+  setNewPlayerName: React.Dispatch<React.SetStateAction<string>>
+  newPlayerShort: string
+  setNewPlayerShort: React.Dispatch<React.SetStateAction<string>>
+  newPlayerGroupId: string
+  setNewPlayerGroupId: React.Dispatch<React.SetStateAction<string>>
+  showPlayerMaster: boolean
+  setShowPlayerMaster: React.Dispatch<React.SetStateAction<boolean>>
+}) {
+
+
+  function addPlayer() {
+    if (!newPlayerName.trim()) return
+
+    const newPlayer: PlayerMaster = {
+      id: crypto.randomUUID(),
+      name: newPlayerName,
+      shortName: newPlayerShort || newPlayerName,
+      groupId: newPlayerGroupId
+    }
+
+    setPlayerMaster(prev => [...prev, newPlayer])
+
+    setNewPlayerName("")
+    setNewPlayerShort("")
+    setNewPlayerGroupId("1")
+  }
+
+  function deletePlayer(id: string) {
+    setPlayerMaster(prev => prev.filter(p => p.id !== id))
+  }
+
+  return (
+    <div style={{ marginTop: "12px" }}>
+
+      {/* ✅ トグル */}
+      <div
+        onClick={() => setShowPlayerMaster(prev => !prev)}
+        style={{
+          cursor: "pointer",
+          fontWeight: "bold",
+          marginBottom: "6px"
+        }}
+      >
+        {showPlayerMaster ? "− プレイヤーマスタ" : "+ プレイヤーマスタ"}
+      </div>
+
+      {showPlayerMaster && (
+        <div style={{ border: "1px solid #ccc", padding: "8px" }}>
+
+          {/* 入力 */}
+          <div style={{ marginBottom: "8px" }}>
+            <input
+              placeholder="名前"
+              value={newPlayerName}
+              onChange={e => setNewPlayerName(e.target.value)}
+              style={{ marginRight: "6px" }}
+            />
+
+            <input
+              placeholder="略称"
+              value={newPlayerShort}
+              onChange={e => setNewPlayerShort(e.target.value)}
+              style={{ marginRight: "6px" }}
+            />
+
+            <input
+              placeholder="グループID"
+              value={newPlayerGroupId}
+              onChange={e => setNewPlayerGroupId(e.target.value)}
+              style={{ width: "60px", marginRight: "6px" }}
+            />
+
+            <button onClick={addPlayer}>
+              追加
+            </button>
+          </div>
+
+          {/* 一覧 */}
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {playerMaster.map(p => (
+                <tr key={p.id}>
+                  <td style={{ border: "1px solid #ccc" }}>{p.name}</td>
+                  <td style={{ border: "1px solid #ccc" }}>{p.shortName}</td>
+                  <td style={{ border: "1px solid #ccc" }}>{p.groupId}</td>
+                  <td style={{ border: "1px solid #ccc" }}>
+                    <button
+                      onClick={() => deletePlayer(p.id)}
+                      style={{ color: "red" }}
+                    >
+                      削除
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+        </div>
+      )}
+
+    </div>
+  )
+}
+
 function App() {
 
   /* ========= 共通スタイル ========= */
@@ -1234,6 +1362,14 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
   const [hasLoaded, setHasLoaded] = useState(false)
+
+  const [playerMaster, setPlayerMaster] = useState<PlayerMaster[]>([])
+  const [newPlayerName, setNewPlayerName] = useState("")
+  const [newPlayerShort, setNewPlayerShort] = useState("")
+  const [newPlayerGroupId, setNewPlayerGroupId] = useState("1")
+
+  const [showPlayerMaster, setShowPlayerMaster] = useState(false)
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([])
 
   /* ========= 画面操作用の状態（初期データ） ========= */
   const emptyScores = Object.fromEntries(
@@ -1301,20 +1437,21 @@ function App() {
   const needResponsibility =
     selectedYakumanType ? selectedYakumanType.responsibility === 1 : false
 
-  /* ========= 自動処理（useEffect） ========= */
-  // ✅ 起動時復元
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
 
     if (stored) {
       try {
-        const parsed: Session[] = JSON.parse(stored)
+        const parsed = JSON.parse(stored)
 
         function revivePlayer(p: Player): Player {
           return PLAYERS.find(x => x.id === p.id) ?? p
         }
 
-        const revived = parsed.map(session => ({
+        // ✅ sessions復元（安全対応）
+        const rawSessions: Session[] = parsed.sessions ?? parsed ?? []
+
+        const revived = rawSessions.map(session => ({
           ...session,
           rounds: session.rounds.map(round => ({
             ...round,
@@ -1336,6 +1473,9 @@ function App() {
 
         setSessions(revived)
 
+        // ✅ playerMaster復元
+        setPlayerMaster(parsed.playerMaster ?? [])
+
       } catch (e) {
         console.error("localStorage の読み込みに失敗", e)
       }
@@ -1347,8 +1487,14 @@ function App() {
   // ✅ 自動保存
   useEffect(() => {
     if (!hasLoaded) return // ✅ 初回は保存しない
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
-  }, [sessions, hasLoaded])
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        sessions,
+        playerMaster
+      })
+    )
+  }, [sessions, playerMaster, hasLoaded])
 
   /* ========= 初期ロード制御 ========= */
 
@@ -1542,23 +1688,77 @@ function App() {
     <div style={{ padding: "16px" }}>
       <h1>JANGRAM</h1>
 
+      <div style={{ marginTop: "12px", marginBottom: "16px" }}>
+        <PlayerMasterSection
+          playerMaster={playerMaster}
+          setPlayerMaster={setPlayerMaster}
+          newPlayerName={newPlayerName}
+          setNewPlayerName={setNewPlayerName}
+          newPlayerShort={newPlayerShort}
+          setNewPlayerShort={setNewPlayerShort}
+          newPlayerGroupId={newPlayerGroupId}
+          setNewPlayerGroupId={setNewPlayerGroupId}
+          showPlayerMaster={showPlayerMaster}
+          setShowPlayerMaster={setShowPlayerMaster}
+        />
+      </div>
+
+      <div style={{ marginBottom: "16px" }}>
+        <h3>参加者選択（4人）</h3>
+
+        {playerMaster.map(p => (
+          <label key={p.id} style={{ marginRight: "12px" }}>
+            <input
+              type="checkbox"
+              checked={selectedPlayerIds.includes(p.id)}
+              onChange={e => {
+                if (e.target.checked) {
+                  if (selectedPlayerIds.length >= 4) return
+                  setSelectedPlayerIds(prev => [...prev, p.id])
+                } else {
+                  setSelectedPlayerIds(prev =>
+                    prev.filter(id => id !== p.id)
+                  )
+                }
+              }}
+            />
+            {p.shortName}
+          </label>
+        ))}
+
+        <div style={{ marginTop: "6px", fontSize: "12px" }}>
+          選択中：{selectedPlayerIds.length} / 4
+        </div>
+      </div>
 
       <button
         onClick={() => {
+
+          if (selectedPlayerIds.length !== 4) {
+            alert("4人選択してください")
+            return
+          }
+
+          const selectedPlayers = playerMaster.filter(p =>
+            selectedPlayerIds.includes(p.id)
+          )
+
           const newSession: Session = {
             id: crypto.randomUUID(),
             title: "新しい対局",
             date: new Date().toISOString(),
             location: "",
-            players: PLAYERS.slice(0, 4), // 仮で先頭4人
+            players: selectedPlayers.map(p => ({
+              id: p.id,
+              name: p.shortName
+            })),
             rounds: [],
             settlement: {
               rateYenPerPt: 50, // デフォルト50円/pt
               tableFee: 0,
               foodFee: Object.fromEntries(
                 PLAYERS.map(p => [p.id, 0])
-              )
-              ,
+              ),
             },
           }
 
@@ -1572,7 +1772,9 @@ function App() {
 
           // ★ 祝儀UIの状態もリセット
           resetYakumanState()
-
+        }}
+        style={{
+          padding: "6px 10px"
         }}
       >
         新しい対局を作成
