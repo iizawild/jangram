@@ -6,13 +6,6 @@ type Player = {
   name: string
 }
 
-const PLAYERS: Player[] = [
-  { id: "A", name: "A" },
-  { id: "B", name: "B" },
-  { id: "C", name: "C" },
-  { id: "D", name: "D" }
-]
-
 type PlayerMaster = {
   id: string
   name: string
@@ -116,9 +109,12 @@ const YAKUMAN_TYPES: YakumanType[] = [
 /* ========= ルール設定 ========= */
 
 /* 飛ばし祝儀計算 */
-function calcBonusPoints(rounds: Round[]): Record<string, number> {
+function calcBonusPoints(
+  rounds: Round[],
+  players: Player[]
+): Record<string, number> {
   const result = Object.fromEntries(
-    PLAYERS.map(p => [p.id, 0])
+    players.map(p => [p.id, 0])
   ) as Record<string, number>
 
   rounds.forEach(round => {
@@ -140,7 +136,7 @@ function calcBonusPoints(rounds: Round[]): Record<string, number> {
 
         // ===== directAdjust（＝祝儀ポイント直接入力） =====
         if (y.directPoints !== undefined) {
-          PLAYERS.forEach(p => {
+          players.forEach(p => {
             result[p.id] += Number(y.directPoints?.[p.id] ?? 0)
           })
           return
@@ -164,7 +160,7 @@ function calcBonusPoints(rounds: Round[]): Record<string, number> {
 
           if (y.role === "parent") {
             // ===== 親ツモ =====
-            const others = PLAYERS
+            const others = players
               .filter(p => p.id !== y.winner.id)
 
             const share = total / 3
@@ -178,7 +174,7 @@ function calcBonusPoints(rounds: Round[]): Record<string, number> {
           } else {
             // ===== 子ツモ =====
 
-            const others = PLAYERS
+            const others = players
               .filter(p => p.id !== y.winner.id)
 
             // 和了者のプラス
@@ -284,7 +280,7 @@ function recalcRound(
   const entries = Object.entries(scores)
     .filter(([, s]) => s.value !== "")
     .map(([playerId, s]) => ({
-      player: PLAYERS.find(p => p.id === playerId)!,
+      player: { id: playerId, name: playerId },
       rawScore: s.value as number,
       updatedAt: s.updatedAt as number,
     }))
@@ -341,15 +337,16 @@ function recalcRound(
 
 function calcSettlement4p(
   rounds: Round[],
-  settlement: Settlement
+  settlement: Settlement,
+  players: Player[]
 ) {
   const totalPt = Object.fromEntries(
-    PLAYERS.map(p => [p.id, 0])
+    players.map(p => [p.id, 0])
   ) as Record<string, number>
 
   // ✅ 参加回数カウント
   const playCount = Object.fromEntries(
-    PLAYERS.map(p => [p.id, 0])
+    players.map(p => [p.id, 0])
   ) as Record<string, number>
 
   rounds.forEach(round => {
@@ -370,9 +367,9 @@ function calcSettlement4p(
   const feePerPlay =
     totalPlays > 0 ? settlement.tableFee / totalPlays : 0
 
-  const bonusPt = calcBonusPoints(rounds)
+  const bonusPt = calcBonusPoints(rounds, players)
 
-  return PLAYERS.map(player => {
+  return players.map(player => {
     const total = totalPt[player.id] + bonusPt[player.id]
     const yen = total * rate
 
@@ -539,7 +536,7 @@ function ScoreTable({
               </td>
 
               {players.map(player => {
-                const r = resultMap[player.id]
+                const r = resultMap[player.id] ?? null
                 const point = r ? r.point : 0
 
                 return [
@@ -614,7 +611,6 @@ function ScoreTable({
                     })}
                   </td>
                 ]
-
               })}
 
               <td
@@ -739,7 +735,7 @@ function ScoreTable({
                   color: bonusPt[player.id] < 0 ? "red" : "green",
                 }}
               >
-                {bonusPt[player.id].toFixed(1)}
+                {(bonusPt[player.id] ?? 0).toFixed(1)}
               </td>,
               <td key={`${player.id}-bonus-empty`} style={{ border: "1px solid #ccc" }} />
             ]
@@ -768,7 +764,7 @@ function ScoreTable({
               return sum + (r ? r.point : 0)
             }, 0)
 
-            const total = totalPoint + bonusPt[player.id]
+            const total = totalPoint + (bonusPt[player.id] ?? 0)
 
             return [
               <td
@@ -857,12 +853,13 @@ function InputSection({
               <input
                 ref={player.id === players[0].id ? firstInputRef : null}
                 type="number"
-                value={inputScores[player.id].value}
+                value={inputScores[player.id]?.value ?? ""}
                 onChange={e => {
                   const raw = e.target.value
                   setInputScores(prev => ({
                     ...prev,
                     [player.id]: {
+                      ...(prev[player.id] ?? {}),
                       value: raw === "" ? "" : Number(raw),
                       updatedAt: raw === "" ? null : Date.now(),
                     },
@@ -1371,11 +1368,6 @@ function App() {
   const [showPlayerMaster, setShowPlayerMaster] = useState(false)
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([])
 
-  /* ========= 画面操作用の状態（初期データ） ========= */
-  const emptyScores = Object.fromEntries(
-    PLAYERS.map(p => [p.id, { value: "", updatedAt: null }])
-  ) as Record<string, ScoreState>
-
   /* ========= 画面操作用の状態 ========= */
   const [mode, setMode] = useState<Mode>("idle")
   const [activeRoundIndex, setActiveRoundIndex] = useState<number | null>(null)
@@ -1394,14 +1386,21 @@ function App() {
   const [yakumanResponsibility, setYakumanResponsibility] = useState<Player | "">("")
   const [yakumanMemo, setYakumanMemo] = useState("")
 
-  function createEmptyAdjustMap() {
+  function createEmptyAdjustMap(players: Player[]) {
     return Object.fromEntries(
-      PLAYERS.map(p => [p.id, ""])
+      players.map(p => [p.id, ""])
     ) as Record<string, number | "">
   }
 
+
   const [yakumanAdjustMap, setYakumanAdjustMap] =
-    useState<Record<string, number | "">>(createEmptyAdjustMap())
+    useState<Record<string, number | "">>({})
+
+  function createEmptyScores(players: Player[]) {
+    return Object.fromEntries(
+      players.map(p => [p.id, { value: "", updatedAt: null }])
+    ) as Record<string, ScoreState>
+  }
 
   /* ========= 画面操作用の状態（補助） ========= */
   // Sessionタイトル編集用
@@ -1410,7 +1409,7 @@ function App() {
 
   // 入力欄に表示するスコア（新規 / 修正 / 削除確認 共通）
   const [inputScores, setInputScores] =
-    useState<Record<string, ScoreState>>(emptyScores)
+    useState<Record<string, ScoreState>>({})
 
   const firstInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -1423,13 +1422,16 @@ function App() {
     )
   }, [currentSession])
 
+  const players = currentSession?.players ?? []
+
   const settlementResults = useMemo(() => {
     if (!currentSession) return []
     return calcSettlement4p(
       currentSession.rounds,
-      currentSession.settlement
+      currentSession.settlement,
+      players
     )
-  }, [currentSession])
+  }, [currentSession, players])
 
   const selectedYakumanType =
     YAKUMAN_TYPES.find(t => t.key === yakumanTypeKey) ?? null
@@ -1445,7 +1447,7 @@ function App() {
         const parsed = JSON.parse(stored)
 
         function revivePlayer(p: Player): Player {
-          return PLAYERS.find(x => x.id === p.id) ?? p
+          return p
         }
 
         // ✅ sessions復元（安全対応）
@@ -1496,18 +1498,23 @@ function App() {
     )
   }, [sessions, playerMaster, hasLoaded])
 
-  /* ========= 初期ロード制御 ========= */
-
-  const bonusPt = useMemo(() => {
-    if (!currentSession) {
-      return Object.fromEntries(
-        PLAYERS.map(p => [p.id, 0])
-      ) as Record<string, number>
-    }
-
-    return calcBonusPoints(currentSession.rounds)
+  // ✅ currentSessionに応じて入力欄を再生成（これが重要）
+  useEffect(() => {
+    if (!currentSession) return
+    setInputScores(createEmptyScores(currentSession.players))
   }, [currentSession])
 
+  useEffect(() => {
+    if (!currentSession) return
+    setYakumanAdjustMap(createEmptyAdjustMap(currentSession.players))
+  }, [currentSession])
+
+  /* ========= 初期ロード制御 ========= */
+  const bonusPt = useMemo(() => {
+    if (!currentSession) return {}
+
+    return calcBonusPoints(currentSession.rounds, players)
+  }, [currentSession, players])
 
   if (!hasLoaded) {
     return <div style={{ padding: "16px" }}>Loading...</div>
@@ -1535,11 +1542,11 @@ function App() {
     // 状態リセット
     setMode("idle")
     setActiveRoundIndex(null)
-    setInputScores(emptyScores)
-    resetYakumanState()
+    setInputScores(createEmptyScores(players))
+    resetYakumanState(players)
   }
 
-  function resetYakumanState() {
+  function resetYakumanState(playersArg: Player[]) {
     setShowTobashi(false)
     setShowYakuman(false)
 
@@ -1554,11 +1561,14 @@ function App() {
     setYakumanDiscarder("")
     setYakumanResponsibility("")
     setYakumanMemo("")
-    setYakumanAdjustMap(createEmptyAdjustMap())
+    setYakumanAdjustMap(createEmptyAdjustMap(playersArg))
   }
 
-  function validateDirectPoints(map: Record<string, number | "">): string | null {
-    const values = PLAYERS.map(p =>
+  function validateDirectPoints(
+    map: Record<string, number | "">,
+    players: Player[]
+  ): string | null {
+    const values = players.map(p =>
       Number(map[p.id] || 0)
     )
 
@@ -1585,7 +1595,7 @@ function App() {
       selectedYakumanType &&
       selectedYakumanType.directAdjust === 1
     ) {
-      const error = validateDirectPoints(yakumanAdjustMap)
+      const error = validateDirectPoints(yakumanAdjustMap, players)
       if (error) {
         alert(error)
         return false
@@ -1628,7 +1638,7 @@ function App() {
           directPoints:
             selected.directAdjust === 1
               ? Object.fromEntries(
-                PLAYERS.map(p => [p.id, Number(yakumanAdjustMap[p.id] || 0)])
+                players.map(p => [p.id, Number(yakumanAdjustMap[p.id] || 0)])
               ) as Record<string, number>
               : undefined
         }]
@@ -1669,21 +1679,19 @@ function App() {
       if (y.directPoints !== undefined) {
         setYakumanAdjustMap(
           Object.fromEntries(
-            PLAYERS.map(p => [
+            players.map(p => [
               p.id,
               y.directPoints?.[p.id] ?? ""
             ])
           ) as Record<string, number | "">
         )
       } else {
-        setYakumanAdjustMap(createEmptyAdjustMap())
+        setYakumanAdjustMap(createEmptyAdjustMap(players))
       }
     }
   }
 
   /* ========= 画面描画 ========= */
-  const players = PLAYERS
-
   return (
     <div style={{ padding: "16px" }}>
       <h1>JANGRAM</h1>
@@ -1757,7 +1765,7 @@ function App() {
               rateYenPerPt: 50, // デフォルト50円/pt
               tableFee: 0,
               foodFee: Object.fromEntries(
-                PLAYERS.map(p => [p.id, 0])
+                selectedPlayers.map(p => [p.id, 0])
               ),
             },
           }
@@ -1768,10 +1776,9 @@ function App() {
           // 操作状態もリセット
           setMode("idle")
           setActiveRoundIndex(null)
-          setInputScores(emptyScores)
 
           // ★ 祝儀UIの状態もリセット
-          resetYakumanState()
+          resetYakumanState(selectedPlayers)
         }}
         style={{
           padding: "6px 10px"
@@ -1823,10 +1830,10 @@ function App() {
                 // 操作状態もリセット
                 setMode("idle")
                 setActiveRoundIndex(null)
-                setInputScores(emptyScores)
+                setInputScores(createEmptyScores(players))
 
                 // ★ 祝儀UIの状態もリセット
-                resetYakumanState()
+                resetYakumanState(players)
               }}
               style={{ marginLeft: "8px", color: "#c00" }}
             >
@@ -1943,6 +1950,7 @@ function App() {
           {/* ↓↓↓ ここから今までの半荘UI ↓↓↓ */}
           <h2 style={{ marginTop: "24px" }}>成績表</h2>
 
+
           <ScoreTable
             rounds={rounds}
             allResults={allResults}
@@ -2016,8 +2024,8 @@ function App() {
                 onClick={() => {
                   setMode("idle")
                   setActiveRoundIndex(null)
-                  setInputScores(emptyScores)
-                  resetYakumanState()
+                  setInputScores(createEmptyScores(players))
+                  resetYakumanState(players)
                 }}
                 style={{
                   padding: "6px 10px",
@@ -2064,8 +2072,8 @@ function App() {
                   // ✅ 次に currentSession 更新
                   setCurrentSession(updated)
 
-                  setInputScores(emptyScores)
-                  resetYakumanState()
+                  setInputScores(createEmptyScores(players))
+                  resetYakumanState(players)
                   return
                 }
 
@@ -2103,8 +2111,8 @@ function App() {
 
                   setMode("idle")
                   setActiveRoundIndex(null)
-                  setInputScores(emptyScores)
-                  resetYakumanState()
+                  setInputScores(createEmptyScores(players))
+                  resetYakumanState(players)
                 }
               }}
               style={{
