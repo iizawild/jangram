@@ -144,8 +144,20 @@ function calcBonusPoints(
 
         // ===== 責任払い =====
         if (y.responsibility !== undefined) {
+
           result[y.winner.id] += total
-          result[y.responsibility.id] -= total
+
+          if (y.type === "ron" && y.discarder) {
+            // ✅ 放銃者と責任払いで折半
+            const half = total / 2
+            result[y.discarder.id] -= half
+            result[y.responsibility.id] -= half
+
+          } else {
+            // ✅ ツモは責任払い1人で全部
+            result[y.responsibility.id] -= total
+          }
+
           return
         }
 
@@ -589,6 +601,10 @@ function ScoreTable({
                       if (y.winner.id === player.id)
                         return <Mark key={`y-${player.id}-win-${index}-${i}`} label="役" value={1} />
 
+                      // ===== 責任払い =====
+                      if (y.responsibility?.id === player.id)
+                        return <Mark key={`y-${player.id}-resp-${index}-${i}`} label="役" value={-1} />
+
                       // ===== ロン（放銃） =====
                       if (y.type === "ron") {
                         if (y.discarder?.id === player.id)
@@ -596,14 +612,12 @@ function ScoreTable({
                         return null
                       }
 
-                      // ===== 責任払い =====
-                      if (y.responsibility?.id === player.id)
-                        return <Mark key={`y-${player.id}-resp-${index}-${i}`} label="役" value={-1} />
-
-                      // ===== ツモ（ここが今回の修正ポイント） =====
+                      // ===== ツモ =====
                       if (y.type === "tsumo") {
-                        if (player.id !== y.winner.id) {
-                          return <Mark key={`y-${player.id}-tsumo-${index}-${i}`} label="役" value={-1} />
+                        // ✅ 責任払いがない場合だけ全員マイナス
+                        if (!y.responsibility) {
+                          if (player.id !== y.winner.id)
+                            return <Mark key={`y-${player.id}-tsumo-${index}-${i}`} label="役" value={-1} />
                         }
                       }
 
