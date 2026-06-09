@@ -457,6 +457,8 @@ type ScoreTableProps = {
   allResults: RoundResult[][]
 
   bonusPt: Record<string, number>
+
+  rankMap: Record<string, number>
 }
 
 function ScoreTable({
@@ -468,8 +470,17 @@ function ScoreTable({
   setMode,
   setActiveRoundIndex,
   loadRoundToUI,
-  bonusPt
+  bonusPt,
+  rankMap
 }: ScoreTableProps) {
+
+  function getRankIcon(rank: number) {
+    if (rank === 1) return "👑"
+    if (rank === 2) return "2"
+    if (rank === 3) return "3"
+    return "💀"
+  }
+
   return (
 
     <table
@@ -793,7 +804,17 @@ function ScoreTable({
               >
                 {total.toFixed(1)}
               </td>,
-              <td key={`${player.id}-total-empty`} style={{ border: "1px solid #ccc" }} />
+              <td
+                key={`${player.id}-rank`}
+                style={{
+                  border: "1px solid #ccc",
+                  padding: "2px",
+                  textAlign: "center",
+                  fontWeight: "bold"
+                }}
+              >
+                {getRankIcon(rankMap[player.id] ?? 4)}
+              </td>
             ]
           })}
 
@@ -1530,6 +1551,36 @@ function App() {
     return calcBonusPoints(currentSession.rounds, players)
   }, [currentSession, players])
 
+  const rankMap = useMemo(() => {
+    const totals = players.map(player => {
+      const totalPoint = allResults.reduce((sum, results) => {
+        const map = Object.fromEntries(results.map(r => [r.player.id, r]))
+        const r = map[player.id]
+        return sum + (r ? r.point : 0)
+      }, 0)
+
+      const total = totalPoint + (bonusPt[player.id] ?? 0)
+
+      return {
+        id: player.id,
+        total
+      }
+    })
+
+    // ✅ 降順ソート
+    const sorted = [...totals].sort((a, b) => b.total - a.total)
+
+    // ✅ ランク付け（同点対応）
+    const map: Record<string, number> = {}
+
+    sorted.forEach((item) => {
+      const sameIndex = sorted.findIndex(x => x.total === item.total)
+      map[item.id] = sameIndex + 1
+    })
+
+    return map
+  }, [players, allResults, bonusPt])
+
   if (!hasLoaded) {
     return <div style={{ padding: "16px" }}>Loading...</div>
   }
@@ -1975,6 +2026,7 @@ function App() {
             setActiveRoundIndex={setActiveRoundIndex}
             loadRoundToUI={loadRoundToUI}
             bonusPt={bonusPt}
+            rankMap={rankMap}
           />
 
           {/* ④ 入力中の半荘 */}
