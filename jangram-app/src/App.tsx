@@ -21,6 +21,14 @@ function generatePlayerId(existing: PlayerMaster[]) {
   return `p${i}`
 }
 
+function generateSessionId(existing: Session[]) {
+  let i = 1
+  while (existing.some(s => s.id === `s${i}`)) {
+    i++
+  }
+  return `s${i}`
+}
+
 type Mode = "idle" | "edit"
 
 type Settlement = {
@@ -2124,10 +2132,49 @@ function App() {
     alert("ID変換完了！")
   }
 
+  function convertSessionIdsToSimple() {
+    if (!confirm("セッションIDを s1, s2… に変換します。よろしいですか？")) {
+      return
+    }
+
+    // ===== ① IDマップ =====
+    const idMap: Record<string, string> = {}
+
+    sessions.forEach((s, index) => {
+      idMap[s.id] = `s${index + 1}`
+    })
+
+    console.log("セッションID変換マップ", idMap)
+
+    // ===== ② 変換 =====
+    const newSessions = sessions.map(s => ({
+      ...s,
+      id: idMap[s.id]
+    }))
+
+    // ===== ③ 更新 =====
+    setSessions(newSessions)
+
+    // currentSessionも更新
+    if (currentSession) {
+      const newId = idMap[currentSession.id]
+      const updated = newSessions.find(s => s.id === newId) || null
+      setCurrentSession(updated)
+    }
+
+    alert("セッションID変換完了！")
+  }
+
   /* ========= 画面描画 ========= */
   return (
     <div style={{ padding: "16px" }}>
       <h1>JANGRAM</h1>
+
+<div style={{ marginBottom: "12px" }}>
+  <button onClick={convertSessionIdsToSimple}>
+    セッションIDをs形式に変換
+  </button>
+</div>
 
       <div style={{ marginBottom: "12px" }}>
         <button onClick={exportPlayerMasterCSV} style={{ marginRight: "8px" }}>
@@ -2215,7 +2262,7 @@ function App() {
           )
 
           const newSession: Session = {
-            id: crypto.randomUUID(),
+            id: generateSessionId(sessions),
             title: "新しい対局",
             date: new Date().toISOString(),
             location: "",
