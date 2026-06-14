@@ -2170,12 +2170,6 @@ function App() {
     <div style={{ padding: "16px" }}>
       <h1>JANGRAM</h1>
 
-<div style={{ marginBottom: "12px" }}>
-  <button onClick={convertSessionIdsToSimple}>
-    セッションIDをs形式に変換
-  </button>
-</div>
-
       <div style={{ marginBottom: "12px" }}>
         <button onClick={exportPlayerMasterCSV} style={{ marginRight: "8px" }}>
           マスタCSV出力
