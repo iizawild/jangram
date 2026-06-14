@@ -2130,12 +2130,6 @@ function App() {
       <h1>JANGRAM</h1>
 
       <div style={{ marginBottom: "12px" }}>
-        <button onClick={convertPlayerIdsToSimple}>
-          IDをp形式に変換
-        </button>
-      </div>
-
-      <div style={{ marginBottom: "12px" }}>
         <button onClick={exportPlayerMasterCSV} style={{ marginRight: "8px" }}>
           マスタCSV出力
         </button>
