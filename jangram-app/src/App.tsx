@@ -1427,7 +1427,6 @@ function App() {
     ) as Record<string, number | "">
   }
 
-
   const [yakumanAdjustMap, setYakumanAdjustMap] =
     useState<Record<string, number | "">>({})
 
@@ -1756,10 +1755,65 @@ function App() {
     }
   }
 
+  // ========================
+  // CSV出力
+  // ========================
+  function exportCSV() {
+    const data = JSON.stringify(sessions)
+
+    const blob = new Blob([data], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "jangram_sessions.csv"
+    a.click()
+
+    URL.revokeObjectURL(url)
+  }
+
+  // ========================
+  // CSV読込
+  // ========================
+  function importCSV(file: File) {
+    const reader = new FileReader()
+
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string
+        const parsed = JSON.parse(text)
+
+        setSessions(parsed)
+        setCurrentSession(null)
+
+      } catch (err) {
+        alert("CSV読み込み失敗")
+        console.error(err)
+      }
+    }
+
+    reader.readAsText(file)
+  }
+
   /* ========= 画面描画 ========= */
   return (
     <div style={{ padding: "16px" }}>
       <h1>JANGRAM</h1>
+
+      <div style={{ marginBottom: "12px" }}>
+        <button onClick={exportCSV} style={{ marginRight: "8px" }}>
+          CSV出力
+        </button>
+
+        <input
+          type="file"
+          accept=".csv"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) importCSV(file)
+          }}
+        />
+      </div>
 
       <div style={{ marginTop: "12px", marginBottom: "16px" }}>
         <PlayerMasterSection
