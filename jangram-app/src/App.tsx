@@ -13,6 +13,14 @@ type PlayerMaster = {
   groupId: string
 }
 
+function generatePlayerId(existing: PlayerMaster[]) {
+  let i = 1
+  while (existing.some(p => p.id === `p${i}`)) {
+    i++
+  }
+  return `p${i}`
+}
+
 type Mode = "idle" | "edit"
 
 type Settlement = {
@@ -1287,7 +1295,7 @@ function PlayerMasterSection({
     if (!newPlayerName.trim()) return
 
     const newPlayer: PlayerMaster = {
-      id: crypto.randomUUID(),
+      id: generatePlayerId(playerMaster),
       name: newPlayerName,
       shortName: newPlayerShort || newPlayerName,
       groupId: newPlayerGroupId
@@ -1756,43 +1764,364 @@ function App() {
   }
 
   // ========================
-  // CSV出力
+  // プレイヤーマスタCSV出力
   // ========================
-  function exportCSV() {
-    const data = JSON.stringify(sessions)
+  function exportPlayerMasterCSV() {
+    const rows = ["id,name,shortName,groupId"]
 
-    const blob = new Blob([data], { type: "text/csv;charset=utf-8;" })
+    playerMaster.forEach(p => {
+      rows.push([
+        p.id,
+        p.name,
+        p.shortName,
+        p.groupId
+      ].join(","))
+    })
+
+    const csv = rows.join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
 
     const a = document.createElement("a")
     a.href = url
-    a.download = "jangram_sessions.csv"
+    a.download = "player_master.csv"
     a.click()
 
     URL.revokeObjectURL(url)
   }
 
   // ========================
-  // CSV読込
+  // プレイヤーマスタCSV読込（安全版）
   // ========================
-  function importCSV(file: File) {
+  function importPlayerMasterCSV(file: File) {
     const reader = new FileReader()
 
     reader.onload = (e) => {
       try {
-        const text = e.target?.result as string
-        const parsed = JSON.parse(text)
 
-        setSessions(parsed)
-        setCurrentSession(null)
+        // ✅ 追加
+        if (!confirm("プレイヤーマスタを上書きします。よろしいですか？")) {
+          return
+        }
+
+        const text = e.target?.result as string
+
+        const lines = text
+          .split("\n")
+          .map(l => l.trim())
+          .filter(l => l)
+
+        const [, ...data] = lines
+
+        const players: PlayerMaster[] = data.map(line => {
+          const [id, name, shortName, groupId] =
+            line.split(",").map(s => s.trim())
+
+          if (!id || !name) {
+            console.warn("マスタ不正行:", line)
+            return null
+          }
+
+          return {
+            id,
+            name,
+            shortName: shortName || name,
+            groupId: groupId || "1"
+          }
+        }).filter((p): p is PlayerMaster => p !== null)
+
+        setPlayerMaster(players)
 
       } catch (err) {
-        alert("CSV読み込み失敗")
+        alert("プレイヤーマスタ読込失敗")
         console.error(err)
       }
     }
 
     reader.readAsText(file)
+  }
+
+  // ========================
+  // 成績CSV出力
+  // ========================
+  function exportMatchResultsCSV() {
+    const rows: string[] = []
+
+    rows.push("sessionId,title,date,location,round,player,rawScore,point")
+
+    sessions.forEach(session => {
+      session.rounds.forEach((round, roundIndex) => {
+
+        const results = recalcRound(round.scores)
+
+        results.forEach(r => {
+          rows.push([
+            session.id,
+            session.title,
+            session.date,
+            session.location ?? "",
+            roundIndex + 1,
+            r.player.id,
+            r.rawScore,
+            r.point.toFixed(1)
+          ].join(","))
+        })
+
+      })
+    })
+
+    const csv = rows.join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "match_results.csv"
+    a.click()
+
+    URL.revokeObjectURL(url)
+  }
+
+
+  // ========================
+  // 成績CSV読込（完全安全版）
+  // ========================
+  function importMatchResultsCSV(file: File) {
+    const reader = new FileReader()
+
+    reader.onload = (e) => {
+      try {
+
+        // ✅ ★ここ追加（最初に書く）
+        if (!confirm("現在の成績データをすべて上書きします。よろしいですか？")) {
+          return
+        }
+
+        const text = e.target?.result as string
+
+        const lines = text
+          .split("\n")
+          .map(l => l.trim())
+          .filter(l => l)
+
+        const [, ...data] = lines
+
+        const masterMap = Object.fromEntries(
+          playerMaster.map(p => [p.id, p])
+        )
+
+        const sessionMap: Record<string, Session> = {}
+
+        data.forEach(line => {
+
+          const parts = line.split(",").map(s => s.trim())
+
+          if (parts.length < 7) {
+            console.warn("列不足:", line)
+            return
+          }
+
+
+          const [
+            sessionId,
+            title,
+            date,
+            location,
+            roundStr,
+            playerId,
+            rawScoreStr
+          ] = parts
+
+          if (!sessionId) {
+            console.warn("sessionIdなし:", line)
+            return
+          }
+
+          const roundIndex = Number(roundStr) - 1
+          const rawScore = Number(rawScoreStr)
+
+          // ✅ 数値チェック
+          if (isNaN(roundIndex) || isNaN(rawScore)) {
+            console.warn("数値不正:", line)
+            return
+          }
+
+          if (!sessionMap[sessionId]) {
+            sessionMap[sessionId] = {
+              id: sessionId,
+              title: title || "CSV取込",
+              date,
+              location: location || "",
+              players: [],
+              rounds: [],
+              settlement: {
+                rateYenPerPt: 50,
+                tableFee: 0,
+                foodFee: {}
+              }
+            }
+          }
+
+          const session = sessionMap[sessionId]
+
+          // ✅ プレイヤーマスタ連携
+          if (!session.players.find(p => p.id === playerId)) {
+
+            const master = masterMap[playerId]
+
+            if (!master) {
+              console.warn("マスタ未登録:", playerId)
+            }
+
+            session.players.push({
+              id: playerId,
+              name: master?.shortName ?? playerId
+            })
+
+            session.settlement.foodFee[playerId] = 0
+          }
+
+          // ✅ ラウンド生成
+          if (!session.rounds[roundIndex]) {
+            session.rounds[roundIndex] = {
+              scores: {}
+            }
+          }
+
+          session.rounds[roundIndex].scores[playerId] = {
+            value: rawScore,
+            updatedAt: Date.now()
+          }
+
+        })
+
+        // ✅ 4人揃ってないラウンド排除
+        Object.values(sessionMap).forEach(session => {
+          session.rounds = session.rounds.filter(round =>
+            Object.keys(round.scores).length === 4
+          )
+        })
+
+        const newSessions = Object.values(sessionMap)
+
+        setSessions(newSessions)
+        setCurrentSession(null)
+
+      } catch (err) {
+        alert("成績CSV読み込み失敗")
+        console.error(err)
+      }
+    }
+
+    reader.readAsText(file)
+  }
+
+  function convertPlayerIdsToSimple() {
+    if (!confirm("プレイヤーIDを p1, p2… に変換します。よろしいですか？")) {
+      return
+    }
+
+    // ===== ① IDマップ作成 =====
+    const idMap: Record<string, string> = {}
+
+    playerMaster.forEach((p, index) => {
+      idMap[p.id] = `p${index + 1}`
+    })
+
+    console.log("ID変換マップ", idMap)
+
+    // ===== ② プレイヤーマスタ変換 =====
+    const newPlayerMaster = playerMaster.map(p => ({
+      ...p,
+      id: idMap[p.id]
+    }))
+
+    // ===== ③ セッション変換 =====
+    const newSessions = sessions.map(session => {
+
+      // プレイヤー
+      const newPlayers = session.players.map(p => ({
+        ...p,
+        id: idMap[p.id]
+      }))
+
+      // ラウンド
+      const newRounds = session.rounds.map(round => {
+
+        // scores変換
+        const newScores: Record<string, ScoreState> = {}
+
+        Object.entries(round.scores).forEach(([oldId, score]) => {
+          const newId = idMap[oldId]
+          if (newId) {
+            newScores[newId] = score
+          }
+        })
+
+        // events変換
+        const newEvents = round.events && {
+          tobashi: round.events.tobashi?.map(t => ({
+            by: { ...t.by, id: idMap[t.by.id] },
+            targets: t.targets.map(x => ({
+              ...x,
+              id: idMap[x.id]
+            }))
+          })),
+
+          yakuman: round.events.yakuman?.map(y => ({
+            ...y,
+            winner: { ...y.winner, id: idMap[y.winner.id] },
+            dealer: y.dealer
+              ? { ...y.dealer, id: idMap[y.dealer.id] }
+              : undefined,
+            discarder: y.discarder
+              ? { ...y.discarder, id: idMap[y.discarder.id] }
+              : undefined,
+            responsibility: y.responsibility
+              ? { ...y.responsibility, id: idMap[y.responsibility.id] }
+              : undefined,
+            directPoints: y.directPoints && Object.fromEntries(
+              Object.entries(y.directPoints).map(([oldId, val]) => [
+                idMap[oldId],
+                val
+              ])
+            )
+          }))
+        }
+
+        return {
+          scores: newScores,
+          ...(newEvents ? { events: newEvents } : {})
+        }
+      })
+
+      // settlement.foodFee変換
+      const newFoodFee = Object.fromEntries(
+        Object.entries(session.settlement.foodFee).map(([oldId, val]) => [
+          idMap[oldId],
+          val
+        ])
+      )
+
+      return {
+        ...session,
+        players: newPlayers,
+        rounds: newRounds,
+        settlement: {
+          ...session.settlement,
+          foodFee: newFoodFee
+        }
+      }
+    })
+
+    // ===== ④ セット =====
+    setPlayerMaster(newPlayerMaster)
+    setSessions(newSessions)
+    setCurrentSession(null)
+
+    alert("ID変換完了！")
   }
 
   /* ========= 画面描画 ========= */
@@ -1801,8 +2130,14 @@ function App() {
       <h1>JANGRAM</h1>
 
       <div style={{ marginBottom: "12px" }}>
-        <button onClick={exportCSV} style={{ marginRight: "8px" }}>
-          CSV出力
+        <button onClick={convertPlayerIdsToSimple}>
+          IDをp形式に変換
+        </button>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <button onClick={exportPlayerMasterCSV} style={{ marginRight: "8px" }}>
+          マスタCSV出力
         </button>
 
         <input
@@ -1810,7 +2145,22 @@ function App() {
           accept=".csv"
           onChange={(e) => {
             const file = e.target.files?.[0]
-            if (file) importCSV(file)
+            if (file) importPlayerMasterCSV(file)
+          }}
+        />
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <button onClick={exportMatchResultsCSV}>
+          成績CSV出力
+        </button>
+
+        <input
+          type="file"
+          accept=".csv"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) importMatchResultsCSV(file)
           }}
         />
       </div>
